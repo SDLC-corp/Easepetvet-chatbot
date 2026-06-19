@@ -1,0 +1,32 @@
+{
+  "name": "easepetvet-chatbot",
+  "version": "0.1.0",
+  "description": "EasePetVet website RAG chatbot backend",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "migrate:up": "node src/db/migrate.js up",
+    "migrate:down": "node src/db/migrate.js down",
+    "ingest:create-jobs": "node src/scripts/ingest.js create-jobs",
+    "ingest:process": "node src/scripts/ingest.js process",
+    "ingest:status": "node src/scripts/ingest.js status",
+    "ingest:reprocess": "node src/scripts/reprocess.js",
+    "retrieve": "node src/scripts/retrieve.js",
+    "embeddings:generate": "node src/scripts/embeddings.js generate",
+    "embeddings:status": "node src/scripts/embeddings.js status",
+    "embeddings:reset": "node src/scripts/embeddings.js reset",
+    "embeddings:test": "node src/scripts/embeddings.js test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "pino": "^9.3.2"
+  }
+}

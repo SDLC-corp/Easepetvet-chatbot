@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Ease Pet Vet — Chatbot Admin</title>
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body class="epv-admin-body">
+  <!-- Token login screen -->
+  <div id="epv-admin-login" class="epv-admin-login">
+    <form id="epv-admin-login-form" class="epv-admin-login-card">
+      <div class="epv-admin-login-title">Ease Pet Vet — Admin</div>
+      <div class="epv-admin-login-sub">Enter the admin dashboard token to continue.</div>
+      <input id="epv-admin-token-input" class="epv-admin-input" type="password"
+             placeholder="Admin token" autocomplete="off" />
+      <div id="epv-admin-login-error" class="epv-admin-login-error" hidden></div>
+      <button type="submit" class="epv-admin-btn epv-admin-btn-primary">Sign in</button>
+    </form>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="epv-admin-app" class="epv-admin-app" hidden>
+    <header class="epv-admin-header">
+      <div class="epv-admin-header-left">
+        <span class="epv-admin-logo">🐾</span>
+        <div>
+          <div class="epv-admin-title">Ease Pet Vet Chatbot Admin</div>
+          <div class="epv-admin-sub">Conversations &amp; knowledge base</div>
+        </div>
+      </div>
+      <div class="epv-admin-header-right">
+        <span id="epv-admin-sync-badge" class="epv-admin-badge">—</span>
+        <span id="epv-admin-last-sync" class="epv-admin-muted"></span>
+        <button id="epv-admin-sync-btn" class="epv-admin-btn epv-admin-btn-primary">Sync Now</button>
+        <button id="epv-admin-logout-btn" class="epv-admin-btn epv-admin-btn-ghost">Logout</button>
+      </div>
+    </header>
+
+    <!-- Stats -->
+    <section id="epv-admin-stats" class="epv-admin-stats"></section>
+
+    <!-- Sync panel -->
+    <section class="epv-admin-card epv-admin-sync">
+      <div class="epv-admin-card-title">Knowledge base sync</div>
+      <div id="epv-admin-sync-body" class="epv-admin-sync-body">Loading…</div>
+    </section>
+
+    <!-- Chats -->
+    <section class="epv-admin-card">
+      <div class="epv-admin-card-title">Conversations</div>
+      <div class="epv-admin-filters">
+        <input id="epv-admin-search" class="epv-admin-input" type="search"
+               placeholder="Search name, email, phone, or message…" />
+        <select id="epv-admin-audience" class="epv-admin-input epv-admin-select">
+          <option value="">All audiences</option>
+          <option value="pet_parent">Pet Parent</option>
+          <option value="vet">Vet</option>
+          <option value="unknown">Not sure</option>
+        </select>
+        <label class="epv-admin-date">From <input id="epv-admin-from" class="epv-admin-input" type="date" /></label>
+        <label class="epv-admin-date">To <input id="epv-admin-to" class="epv-admin-input" type="date" /></label>
+        <button id="epv-admin-apply" class="epv-admin-btn epv-admin-btn-secondary">Apply</button>
+      </div>
+      <div class="epv-admin-table-wrap">
+        <table class="epv-admin-table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Email</th><th>Contact</th><th>Audience</th>
+              <th>Last message</th><th>When</th><th class="epv-admin-num">Msgs</th>
+            </tr>
+          </thead>
+          <tbody id="epv-admin-chat-rows"></tbody>
+        </table>
+      </div>
+      <div class="epv-admin-pager">
+        <button id="epv-admin-prev" class="epv-admin-btn epv-admin-btn-ghost">‹ Prev</button>
+        <span id="epv-admin-page-info" class="epv-admin-muted"></span>
+        <button id="epv-admin-next" class="epv-admin-btn epv-admin-btn-ghost">Next ›</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Chat detail drawer -->
+  <div id="epv-admin-drawer" class="epv-admin-drawer" hidden>
+    <div class="epv-admin-drawer-backdrop" data-close="1"></div>
+    <div class="epv-admin-drawer-panel">
+      <div class="epv-admin-drawer-head">
+        <div id="epv-admin-drawer-title" class="epv-admin-card-title">Conversation</div>
+        <button class="epv-admin-btn epv-admin-btn-ghost" data-close="1">Close ✕</button>
+      </div>
+      <div id="epv-admin-drawer-lead" class="epv-admin-drawer-lead"></div>
+      <div id="epv-admin-drawer-messages" class="epv-admin-messages"></div>
+    </div>
+  </div>
+
+  <script src="admin.js" defer></script>
+</body>
+</html>

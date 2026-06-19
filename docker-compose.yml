@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: easepetvet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: easepetvet
+      POSTGRES_PASSWORD: easepetvet_dev_pw
+      POSTGRES_DB: easepetvet
+    ports:
+      - "5433:5432"
+    volumes:
+      - easepetvet_pgdata:/var/lib/postgresql/data
+
+volumes:
+  easepetvet_pgdata:
