@@ -34,15 +34,16 @@ export async function getSessionEmail(sessionRowId) {
 // Attaches (or updates) an email for an existing session without requiring a
 // name. Leaves any existing name/phone intact on conflict. Does not create or
 // reset the chat session.
-export async function upsertSessionEmail({ websiteId, sessionRowId, email, audience }) {
+export async function upsertSessionEmail({ websiteId, sessionRowId, email, phone, audience }) {
   await pool.query(
-    `INSERT INTO chat_leads (website_id, session_id, email, audience)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO chat_leads (website_id, session_id, email, phone, audience)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (session_id) DO UPDATE SET
        email = EXCLUDED.email,
+       phone = COALESCE(EXCLUDED.phone, chat_leads.phone),
        website_id = EXCLUDED.website_id,
-       audience = COALESCE(chat_leads.audience, EXCLUDED.audience),
+       audience = CASE WHEN EXCLUDED.audience <> 'unknown' THEN EXCLUDED.audience ELSE chat_leads.audience END,
        updated_at = now()`,
-    [websiteId ?? null, sessionRowId ?? null, email, audience ?? 'unknown'],
+    [websiteId ?? null, sessionRowId ?? null, email, phone ?? null, audience || 'unknown'],
   );
 }

@@ -5,17 +5,26 @@
 
   var TOKEN_KEY = 'epv_admin_token';
   var POLL_MS = 7000;
-  var state = { page: 1, limit: 20, total: 0, filters: {}, pollTimer: null };
+  var state = { page: 1, limit: 20, total: 0, filters: {}, pollTimer: null, selected: {}, selectAllAcross: false };
 
   function $(id) { return document.getElementById(id); }
   function token() { try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch (e) { return ''; } }
   function setToken(t) { try { sessionStorage.setItem(TOKEN_KEY, t); } catch (e) {} }
   function clearToken() { try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) {} }
 
+  var TZ = 'America/Chicago';   // overridden by /summary (ADMIN_DASHBOARD_TIMEZONE)
+  // Dates shown in the configured timezone, labelled CST.
   function fmtDate(v) {
     if (!v) return '—';
-    try { return new Date(v).toLocaleString(); } catch (e) { return String(v); }
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: TZ, year: 'numeric', month: 'short', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: true,
+      }).format(new Date(v)) + ' CST';
+    } catch (e) { return String(v); }
   }
+  var AUDIENCE_LABELS = { pet_parent: 'Pet Parent', vet: 'Vet', unknown: 'Not sure' };
+  function formatAudience(a) { return AUDIENCE_LABELS[a] || 'Not sure'; }
   // Display-name priority: email -> name -> "Anonymous Visitor".
   function displayName(email, name) {
     return (email && email.trim()) || (name && name.trim()) || 'Anonymous Visitor';
@@ -66,9 +75,10 @@
     return api('/summary').then(function (out) {
       if (!out.ok) return;
       var d = out.data;
+      if (d.timezone) TZ = d.timezone;
       var cards = [
-        ['Chats', d.totalChats], ['Leads', d.totalLeads], ['Messages', d.totalMessages],
-        ['Pages', d.totalPages], ['Chunks', d.totalChunks], ['Sync', d.sync.lastStatus],
+        ['Chats', d.totalChats], ['Leads', d.totalLeads],
+        ['Messages', d.totalMessages],
       ];
       var wrap = $('epv-admin-stats');
       wrap.textContent = '';
@@ -94,32 +104,6 @@
       var d = out.data;
       setSyncBadge(d.status);
       $('epv-admin-last-sync').textContent = d.lastCompletedAt ? ('Last sync: ' + fmtDate(d.lastCompletedAt)) : 'Never synced';
-
-      var body = $('epv-admin-sync-body');
-      body.textContent = '';
-      function row(label, value) {
-        var r = el('div', 'epv-admin-sync-row');
-        r.appendChild(el('b', null, label + ': '));
-        r.appendChild(document.createTextNode(value));
-        body.appendChild(r);
-      }
-      row('Status', d.status || 'never');
-      row('Last started', fmtDate(d.lastStartedAt));
-      row('Last completed', fmtDate(d.lastCompletedAt));
-      row('Next scheduled', fmtDate(d.nextSyncAt));
-      var es = d.embeddingStatus;
-      if (es) row('Embeddings', es.coveragePercent + '% covered, vectorReady=' + es.vectorReady);
-      if (d.latestRun && d.latestRun.summary && Object.keys(d.latestRun.summary).length) {
-        row('Latest run', JSON.stringify(d.latestRun.summary));
-      }
-      if (d.lastError) {
-        var warn = el('div', 'epv-admin-sync-warn', 'Last error: ' + d.lastError);
-        body.appendChild(warn);
-      }
-      var sm = d.latestRun && d.latestRun.summary;
-      if (sm && sm.embeddingWarning) {
-        body.appendChild(el('div', 'epv-admin-sync-warn', sm.embeddingWarning));
-      }
 
       var running = d.status === 'running';
       var btn = $('epv-admin-sync-btn');
@@ -184,28 +168,143 @@
       rows.textContent = '';
       if (!out.data.items.length) {
         var tr = el('tr');
-        var td = el('td', 'epv-admin-empty'); td.colSpan = 7; td.textContent = 'No conversations found.';
+        var td = el('td', 'epv-admin-empty'); td.colSpan = 8; td.textContent = 'No conversations found.';
         tr.appendChild(td); rows.appendChild(tr);
       } else {
         out.data.items.forEach(function (it) {
           var tr = el('tr');
-          tr.appendChild(el('td', null, displayName(it.email, it.name)));
-          tr.appendChild(el('td', null, it.email || '—'));
-          tr.appendChild(el('td', null, it.phone || '—'));
-          var audTd = el('td'); audTd.appendChild(el('span', 'epv-admin-aud', (it.audience || 'unknown').replace('_', ' ')));
+          var checkTd = el('td', 'epv-admin-check');
+          var cb = el('input'); cb.type = 'checkbox'; cb.setAttribute('aria-label', 'Select chat');
+          cb.dataset.sid = it.sessionId;
+          cb.checked = !!state.selected[it.sessionId];
+          cb.addEventListener('click', function (e) { e.stopPropagation(); });
+          cb.addEventListener('change', function () {
+            if (cb.checked) state.selected[it.sessionId] = true;
+            else { delete state.selected[it.sessionId]; state.selectAllAcross = false; }
+            syncSelectAllBox();
+            refreshActions();
+          });
+          checkTd.appendChild(cb);
+          tr.appendChild(checkTd);
+          tr.appendChild(el('td', 'epv-admin-cell', displayName(it.email, it.name)));
+          tr.appendChild(el('td', 'epv-admin-cell', it.email || '—'));
+          tr.appendChild(el('td', 'epv-admin-cell', it.phone || '—'));
+          var audTd = el('td'); audTd.appendChild(el('span', 'epv-admin-aud', formatAudience(it.audience)));
           tr.appendChild(audTd);
           tr.appendChild(el('td', 'epv-admin-preview', it.lastMessagePreview || '—'));
-          tr.appendChild(el('td', null, it.lastMessageAt ? fmtDate(it.lastMessageAt) : fmtDate(it.createdAt)));
+          tr.appendChild(el('td', 'epv-admin-when', it.lastMessageAt ? fmtDate(it.lastMessageAt) : fmtDate(it.createdAt)));
           tr.appendChild(el('td', 'epv-admin-num', String(it.messageCount)));
           tr.addEventListener('click', function () { openChat(it.sessionId); });
           rows.appendChild(tr);
         });
       }
+      syncSelectAllBox();
+      refreshActions();
       var pages = Math.max(1, Math.ceil(state.total / state.limit));
       $('epv-admin-page-info').textContent = 'Page ' + state.page + ' of ' + pages + ' · ' + state.total + ' total';
       $('epv-admin-prev').disabled = state.page <= 1;
       $('epv-admin-next').disabled = state.page >= pages;
     });
+  }
+
+  function selectedIds() { return Object.keys(state.selected || {}); }
+
+  function refreshActions() {
+    var n = selectedIds().length;
+    var del = $('epv-admin-delete-btn');
+    del.disabled = n === 0;
+    del.textContent = n > 0 ? ('Delete selected (' + n + ')') : 'Delete selected';
+    var exp = $('epv-admin-export-btn');
+    exp.disabled = n === 0;
+    exp.textContent = n > 0 ? ('Export selected (' + n + ')') : 'Export selected';
+    var info = $('epv-admin-selinfo');
+    if (n === 0) { info.hidden = true; info.textContent = ''; }
+    else {
+      info.hidden = false;
+      info.textContent = state.selectAllAcross
+        ? (n + ' chat' + (n === 1 ? '' : 's') + ' selected across all pages')
+        : (n + ' selected on this page');
+    }
+  }
+
+  // Reflects the header "select all" checkbox state from the current selection.
+  function syncSelectAllBox() {
+    var sa = $('epv-admin-select-all');
+    if (!sa) return;
+    var boxes = document.querySelectorAll('#epv-admin-chat-rows .epv-admin-check input');
+    var allChecked = boxes.length > 0 && [].every.call(boxes, function (cb) { return cb.checked; });
+    sa.checked = state.selectAllAcross || allChecked;
+  }
+
+  function clearSelection() {
+    state.selected = {};
+    state.selectAllAcross = false;
+    var sa = $('epv-admin-select-all'); if (sa) sa.checked = false;
+    document.querySelectorAll('#epv-admin-chat-rows .epv-admin-check input').forEach(function (cb) { cb.checked = false; });
+    refreshActions();
+  }
+
+  // Select all chats matching the current filters across ALL pages (not just this one).
+  function toggleSelectAll() {
+    if (!$('epv-admin-select-all').checked) { clearSelection(); return; }
+    var f = state.filters;
+    var q = '?all=1';
+    if (f.search) q += '&search=' + encodeURIComponent(f.search);
+    if (f.audience) q += '&audience=' + encodeURIComponent(f.audience);
+    if (f.dateFrom) q += '&dateFrom=' + encodeURIComponent(f.dateFrom);
+    if (f.dateTo) q += '&dateTo=' + encodeURIComponent(f.dateTo);
+    var sa = $('epv-admin-select-all'); sa.disabled = true;
+    api('/chats/ids' + q).then(function (out) {
+      sa.disabled = false;
+      if (!out.ok) { sa.checked = false; return; }
+      state.selected = {};
+      out.data.sessionIds.forEach(function (id) { state.selected[id] = true; });
+      state.selectAllAcross = true;
+      document.querySelectorAll('#epv-admin-chat-rows .epv-admin-check input').forEach(function (cb) { cb.checked = true; });
+      refreshActions();
+    }).catch(function () { sa.disabled = false; sa.checked = false; });
+  }
+
+  function deleteSelected() {
+    var ids = selectedIds();
+    if (!ids.length) return;
+    if (!window.confirm('Delete ' + ids.length + ' conversation' + (ids.length === 1 ? '' : 's') + '? This cannot be undone.')) return;
+    var btn = $('epv-admin-delete-btn');
+    btn.disabled = true; btn.textContent = 'Deleting…';
+    api('/chats/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionIds: ids }),
+    }).then(function (out) {
+      if (!out.ok) { alert((out.data && out.data.error) || 'Delete failed.'); refreshActions(); return; }
+      state.selected = {}; state.selectAllAcross = false;
+      loadSummary();
+      loadChats(state.page);
+    }).catch(function () { alert('Could not connect.'); refreshActions(); });
+  }
+
+  function exportSelected() {
+    var ids = selectedIds();
+    if (!ids.length) return;
+    var btn = $('epv-admin-export-btn');
+    var orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Exporting…';
+    fetch('/api/admin/chats/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() },
+      body: JSON.stringify({ sessionIds: ids }),
+    }).then(function (res) {
+      if (res.status === 401) { logout(); throw new Error('unauthorized'); }
+      if (!res.ok) throw new Error('export failed');
+      return res.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'chat-users-export.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      btn.disabled = false; btn.textContent = orig; refreshActions();
+    }).catch(function () { btn.disabled = false; refreshActions(); alert('Export failed.'); });
   }
 
   function openChat(sessionId) {
@@ -215,8 +314,12 @@
       var leadBox = $('epv-admin-drawer-lead');
       leadBox.textContent = '';
       var lead = d.lead || {};
+      var src = null;
+      (d.messages || []).forEach(function (m) { if (m.metadata && m.metadata.source) src = m.metadata.source; });
+      var srcLabel = src === 'left_intent_chatbot' ? 'Left (intent-based)' : (src ? src : 'Main widget');
       [['Name', lead.name], ['Email', lead.email], ['Contact', lead.phone],
-       ['Audience', (d.session.audience || 'unknown').replace('_', ' ')],
+       ['Audience', formatAudience(d.session.audience)],
+       ['Source', srcLabel],
        ['Started', fmtDate(d.session.createdAt)]].forEach(function (p) {
         var line = el('div');
         line.appendChild(el('b', null, p[0] + ': '));
@@ -247,19 +350,36 @@
     loadChats(1);
   }
 
+  // Live refresh: keep the chat list + counts current so a chat that just captured
+  // an email shows its new name without a manual page reload. Skipped while the
+  // user is busy (drawer open, a selection in progress, or typing in search) so it
+  // never disrupts an action.
+  function autoRefresh() {
+    if ($('epv-admin-app').hidden) return;
+    if (!$('epv-admin-drawer').hidden) return;
+    if (state.selectAllAcross || Object.keys(state.selected).length > 0) return;
+    if (document.activeElement === $('epv-admin-search')) return;
+    loadChats(state.page);
+    loadSummary();
+  }
+
   /* ---------- wire up ---------- */
   function init() {
     $('epv-admin-login-form').addEventListener('submit', doLogin);
     $('epv-admin-logout-btn').addEventListener('click', logout);
     $('epv-admin-sync-btn').addEventListener('click', runSync);
-    $('epv-admin-apply').addEventListener('click', function () { state.filters = readFilters(); loadChats(1); });
-    $('epv-admin-search').addEventListener('keydown', function (e) { if (e.key === 'Enter') { state.filters = readFilters(); loadChats(1); } });
+    $('epv-admin-apply').addEventListener('click', function () { clearSelection(); state.filters = readFilters(); loadChats(1); });
+    $('epv-admin-select-all').addEventListener('change', toggleSelectAll);
+    $('epv-admin-delete-btn').addEventListener('click', deleteSelected);
+    $('epv-admin-export-btn').addEventListener('click', exportSelected);
+    $('epv-admin-search').addEventListener('keydown', function (e) { if (e.key === 'Enter') { clearSelection(); state.filters = readFilters(); loadChats(1); } });
     $('epv-admin-prev').addEventListener('click', function () { if (state.page > 1) loadChats(state.page - 1); });
     $('epv-admin-next').addEventListener('click', function () { loadChats(state.page + 1); });
     $('epv-admin-drawer').addEventListener('click', function (e) { if (e.target.getAttribute('data-close')) closeDrawer(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
 
     if (token()) { showApp(); loadAll(); } else { showLogin(); }
+    setInterval(autoRefresh, 12000); // live-update the chat list every 12s
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -77,19 +77,37 @@ function formatPageAttribute(retrieval) {
   return `The ${label}${where} is: ${result.value}`;
 }
 
+// Collapse the whitespace noise that comes from scraped page text (runs of
+// blank lines, stray indentation) so the AI-free fallback reads cleanly.
+function cleanSnippet(text) {
+  return (text ?? '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*\n\s*/g, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Trim to a max length at a sentence/line boundary so we never dump a long wall
+// of raw page content (e.g. team bios) when the AI is unavailable.
+function truncateAtBoundary(text, max) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('.\n'), cut.lastIndexOf('\n'), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  const trimmed = (stop > max * 0.5 ? cut.slice(0, stop + 1) : cut).trim();
+  return trimmed.replace(/[\s.,;:!?-]+$/, '') + '…';
+}
+
 function formatChunks(retrieval) {
-  // Overview/service questions read better with a couple more snippets and a
-  // short friendly lead-in (this is the AI-free fallback, so no summarizing —
-  // we only present what was actually retrieved).
-  const limit = retrieval.overview ? 4 : 2;
+  // AI-free fallback: present a single concise snippet (we do not summarize, so
+  // keep it short and readable rather than concatenating raw page chunks).
+  const MAX = 480;
   const snippets = retrieval.results
-    .slice(0, limit)
-    .map((r) => (r.text ?? '').trim())
+    .map((r) => cleanSnippet(r.text))
     .filter(Boolean);
   if (snippets.length === 0) return NOT_FOUND;
-  const body = snippets.join('\n\n');
+  const body = truncateAtBoundary(snippets[0], MAX);
   if (retrieval.overview) {
-    return `Here's how Ease Pet Vet can help:\n\n${body}`;
+    return `Here's how Ease Pet Vet can help:\n\n${body}\n\nAsk me about pricing, how it works, behavior topics, or support for more.`;
   }
   return body;
 }

@@ -34,7 +34,17 @@
 .epv-admin-btn-primary:hover { background: var(--epv-a-accent-dark); }
 .epv-admin-btn-secondary { background: #e7eff1; color: var(--epv-a-accent-dark); border-color: var(--epv-a-border); }
 .epv-admin-btn-ghost { background: transparent; color: var(--epv-a-muted); border-color: var(--epv-a-border); }
+.epv-admin-btn-danger { background: var(--epv-a-err); color: #fff; }
+.epv-admin-btn-danger:hover { background: #a32d20; }
+.epv-admin-btn-accent { background: var(--epv-a-ok); color: #fff; }
+.epv-admin-btn-accent:hover { background: #18895c; }
 .epv-admin-btn:disabled { opacity: .55; cursor: not-allowed; }
+.epv-admin-check { width: 34px; text-align: center; }
+.epv-admin-check input { cursor: pointer; }
+.epv-admin-selinfo {
+  margin: 0 0 10px; padding: 7px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 600;
+  background: #e4eefb; color: var(--epv-a-run); border: 1px solid #cfe0f7;
+}
 
 .epv-admin-input {
   border: 1px solid var(--epv-a-border); border-radius: 9px; padding: 9px 11px; font-size: 14px;
@@ -62,7 +72,8 @@
   padding: 14px 18px; margin-bottom: 16px; flex-wrap: wrap;
 }
 .epv-admin-header-left { display: flex; align-items: center; gap: 12px; }
-.epv-admin-logo { font-size: 26px; }
+.epv-admin-logo { height: 38px; width: auto; display: block; }
+.epv-admin-login-logo { height: 44px; width: auto; display: block; margin: 0 auto 6px; }
 .epv-admin-title { font-size: 17px; font-weight: 700; }
 .epv-admin-sub { color: var(--epv-a-muted); font-size: 12.5px; }
 .epv-admin-header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -77,10 +88,14 @@
 .epv-admin-badge.is-never { background: #eceff1; color: var(--epv-a-muted); }
 
 /* Stats */
-.epv-admin-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
-.epv-admin-stat { background: var(--epv-a-card); border: 1px solid var(--epv-a-border); border-radius: 12px; padding: 14px; }
-.epv-admin-stat-num { font-size: 22px; font-weight: 700; }
-.epv-admin-stat-label { color: var(--epv-a-muted); font-size: 12px; margin-top: 2px; }
+.epv-admin-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.epv-admin-stat {
+  background: var(--epv-a-card); border: 1px solid var(--epv-a-border); border-top: 3px solid var(--epv-a-accent);
+  border-radius: 12px; padding: 16px; transition: box-shadow .15s ease, transform .1s ease, border-color .15s ease;
+}
+.epv-admin-stat:hover { box-shadow: 0 6px 18px rgba(20,60,70,.10); transform: translateY(-1px); }
+.epv-admin-stat-num { font-size: 24px; font-weight: 700; color: var(--epv-a-accent-dark); }
+.epv-admin-stat-label { color: var(--epv-a-muted); font-size: 12px; margin-top: 2px; text-transform: capitalize; }
 
 /* Cards */
 .epv-admin-card {
@@ -103,14 +118,19 @@
 
 /* Table */
 .epv-admin-table-wrap { overflow-x: auto; }
-.epv-admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* Fixed layout so the row structure stays identical across every audience filter
+   (columns no longer resize to fit the data). */
+.epv-admin-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
 .epv-admin-table th { text-align: left; color: var(--epv-a-muted); font-weight: 600; padding: 8px 10px; border-bottom: 2px solid var(--epv-a-border); white-space: nowrap; }
-.epv-admin-table td { padding: 10px; border-bottom: 1px solid var(--epv-a-border); vertical-align: top; }
+.epv-admin-table td { padding: 10px; border-bottom: 1px solid var(--epv-a-border); vertical-align: middle; }
 .epv-admin-table tbody tr { cursor: pointer; }
 .epv-admin-table tbody tr:hover { background: #f4f8f9; }
 .epv-admin-num { text-align: right; }
 .epv-admin-table td.epv-admin-num { text-align: right; }
-.epv-admin-preview { color: var(--epv-a-muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Single-line, truncated cells -> consistent compact rows. */
+.epv-admin-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.epv-admin-when { white-space: nowrap; font-size: 12px; color: var(--epv-a-muted); }
+.epv-admin-preview { color: var(--epv-a-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .epv-admin-aud { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #eef4f5; color: var(--epv-a-accent-dark); text-transform: capitalize; }
 .epv-admin-empty { padding: 24px; text-align: center; color: var(--epv-a-muted); }
 

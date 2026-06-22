@@ -1,0 +1,24 @@
+/* Left intent-chatbot specific styles (the in-chat lead prompt). Everything else
+   reuses the shared epv-chatbot-* classes from ease-chatbot-widget.css. The CSS
+   variables (--epv-accent, etc.) are inherited from .epv-chatbot-root. */
+.epv-leftbot-prompt {
+  align-self: stretch; background: #eef4f5; border: 1px solid var(--epv-border, #e2ebec);
+  border-radius: 12px; padding: 11px 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.epv-leftbot-prompt-text { font-size: 12.5px; color: var(--epv-text, #1c2b2f); line-height: 1.45; }
+.epv-leftbot-input {
+  border: 1px solid var(--epv-border, #e2ebec); border-radius: 9px; padding: 8px 11px;
+  font-family: inherit; font-size: 13px; color: var(--epv-text, #1c2b2f); background: #fff;
+}
+.epv-leftbot-input:focus { outline: none; border-color: var(--epv-accent, #1f7a8c); }
+.epv-leftbot-prompt-err { font-size: 11.5px; color: #a12626; }
+.epv-leftbot-prompt-btns { display: flex; gap: 8px; }
+.epv-leftbot-btn {
+  flex: 1 1 auto; padding: 8px 10px; font-size: 12.5px; font-weight: 600; border-radius: 9px;
+  border: 1px solid var(--epv-border, #e2ebec); background: #fff; color: var(--epv-muted, #5d7176);
+  cursor: pointer; font-family: inherit;
+}
+.epv-leftbot-btn:hover { border-color: var(--epv-accent, #1f7a8c); color: var(--epv-accent-dark, #145e6e); }
+.epv-leftbot-btn-primary { background: var(--epv-accent, #1f7a8c); border-color: var(--epv-accent, #1f7a8c); color: #fff; }
+.epv-leftbot-btn-primary:hover { background: var(--epv-accent-dark, #145e6e); color: #fff; }
+.epv-leftbot-btn:disabled { opacity: .6; cursor: not-allowed; }

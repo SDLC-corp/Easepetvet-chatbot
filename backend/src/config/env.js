@@ -239,6 +239,7 @@ function loadConfig() {
     // dashboard "not configured" (routes return 503) without affecting startup.
     admin: {
       token: process.env.ADMIN_DASHBOARD_TOKEN ?? '',
+      timezone: process.env.ADMIN_DASHBOARD_TIMEZONE ?? 'America/Chicago',
       sync: {
         autoEnabled: (process.env.ADMIN_SYNC_AUTO_ENABLED ?? 'false').toLowerCase() === 'true',
         intervalDays: Number(process.env.ADMIN_SYNC_INTERVAL_DAYS ?? '30'),

@@ -22,7 +22,13 @@
 
   var SESSION_KEY = 'epv_chatbot_session_id';
   var AUDIENCE_KEY = 'epv_chatbot_audience';
+  var LEAD_KEY = 'epv_chatbot_lead';
   var VALID_AUDIENCES = ['pet_parent', 'vet', 'unknown'];
+  var AUDIENCES = [
+    { value: 'pet_parent', label: 'Pet Parent' },
+    { value: 'vet', label: 'Vet' },
+    { value: 'unknown', label: 'Not sure' },
+  ];
   // Same pragmatic email shape check the backend uses.
   var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,19 +39,18 @@
   var audience = load(AUDIENCE_KEY) || DEFAULT_AUDIENCE;
   if (VALID_AUDIENCES.indexOf(audience) < 0) audience = 'unknown';
 
+  // Returning visitors who already submitted the intro form skip straight to chat.
+  var savedLead = (function () { try { return JSON.parse(load(LEAD_KEY) || 'null'); } catch (e) { return null; } })();
+  var leadName = (savedLead && savedLead.name) ? savedLead.name : null;
+  var formAudience = null;
+
   // Conversation usage state (driven by the API usage object).
   var greeted = false;
   var convLimit = 20;     // updated from usage.messageLimit
   var remaining = null;   // updated from usage.remainingMessages
   var limitReached = false;
-  var emailSaved = false;
 
-  // Per-session localStorage keys for email-saved / dismissed prompt counts / remaining.
-  function emailSavedKey() { return 'epv_chatbot_email_saved_' + (sessionId || 'none'); }
-  function dismissKey() { return 'epv_chatbot_email_prompt_dismissed_counts_' + (sessionId || 'none'); }
   function remainingKey() { return 'epv_chatbot_remaining_' + (sessionId || 'none'); }
-  function getDismissed() { try { return JSON.parse(load(dismissKey()) || '[]'); } catch (e) { return []; } }
-  function addDismissed(n) { var a = getDismissed(); if (a.indexOf(n) < 0) { a.push(n); store(dismissKey(), JSON.stringify(a)); } }
 
   var ICONS = {
     chat: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.5 3 2 6.8 2 11.5c0 2.2 1 4.2 2.7 5.7L4 21l4.2-1.6c1.2.3 2.5.5 3.8.5 5.5 0 10-3.8 10-8.5S17.5 3 12 3z"/></svg>',
@@ -53,9 +58,11 @@
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     clear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
     send: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 11l18-8-8 18-2-7-8-3z"/></svg>',
+    ease: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><mask id="epvRightEaseCut"><rect width="64" height="64" fill="#fff"/><circle cx="42" cy="32" r="18.5" fill="#000"/></mask></defs><circle cx="30" cy="32" r="27" fill="#1AB5AC" mask="url(#epvRightEaseCut)"/><path d="M31 46 C24.5 40 16 35.5 16 28.3 C16 23 21.8 20.8 26 23.5 C28.2 24.9 29.9 27.4 31 29.6 C32.1 27.4 33.8 24.9 36 23.5 C40.2 20.8 46 23 46 28.3 C46 35.5 37.5 40 31 46 Z" fill="#0E8C84"/><path d="M24.5 31 L30.5 38 L49 15.5" fill="none" stroke="#0E8C84" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    easeFull: '<svg viewBox="0 0 250 72" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ease"><defs><mask id="epvRightEaseFullCut"><rect width="72" height="72" fill="#fff"/><circle cx="46" cy="36" r="20.5" fill="#000"/></mask></defs><circle cx="33" cy="36" r="30" fill="#1AB5AC" mask="url(#epvRightEaseFullCut)"/><path d="M34 51 C27 44.5 17.5 39.5 17.5 31.5 C17.5 25.5 24 23 28.7 26 C31.2 27.6 33 30.4 34 32.8 C35 30.4 36.8 27.6 39.3 26 C44 23 50.5 25.5 50.5 31.5 C50.5 39.5 41 44.5 34 51 Z" fill="#0E8C84"/><path d="M26.5 34.5 L33.5 42.5 L54 17" fill="none" stroke="#0E8C84" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/><text x="80" y="53" font-family="Poppins, Nunito, Quicksand, \'Segoe UI\', system-ui, Arial, sans-serif" font-size="56" font-weight="700" letter-spacing="-2" fill="#333333">ease</text></svg>',
   };
 
-  var root, panel, messagesEl, inputEl, sendBtn, launcherBtn, composerEl, remainingEl, warningEl;
+  var root, panel, messagesEl, inputEl, sendBtn, launcherBtn, composerEl, remainingEl, warningEl, formEl, metaEl;
   var isOpen = false;
   var busy = false;
   var typeTimer = null;
@@ -80,9 +87,13 @@
 
     // Header
     var header = el('div', 'epv-chatbot-header');
-    header.appendChild(el('div', 'epv-chatbot-header-avatar', ICONS.paw));
+    var headerLogo = el('div', null, ICONS.easeFull);
+    headerLogo.style.cssText = 'background:#fff;border-radius:8px;padding:4px 9px;display:flex;align-items:center;flex:none';
+    var headerLogoSvg = headerLogo.querySelector('svg');
+    if (headerLogoSvg) { headerLogoSvg.style.height = '22px'; headerLogoSvg.style.width = 'auto'; headerLogoSvg.style.display = 'block'; }
+    header.appendChild(headerLogo);
     var headerText = el('div', 'epv-chatbot-header-text');
-    headerText.appendChild(el('div', 'epv-chatbot-title', 'Ease Pet Vet Assistant'));
+    headerText.appendChild(el('div', 'epv-chatbot-title', 'Pet Vet Assistant'));
     headerText.appendChild(el('div', 'epv-chatbot-subtitle', 'Ask about Ease, pricing, vets, pet parents, and support'));
     header.appendChild(headerText);
     var actions = el('div', 'epv-chatbot-header-actions');
@@ -98,6 +109,10 @@
     actions.appendChild(closeBtn);
     header.appendChild(actions);
     panel.appendChild(header);
+
+    // Intro form (gate). Shown until the visitor submits their details.
+    formEl = buildForm();
+    panel.appendChild(formEl);
 
     // Messages
     messagesEl = el('div', 'epv-chatbot-messages');
@@ -119,14 +134,11 @@
     composerEl.appendChild(sendBtn);
     panel.appendChild(composerEl);
 
-    // Remaining-question counter + low-count warning.
-    var meta = el('div', 'epv-chatbot-meta');
-    remainingEl = el('div', 'epv-chatbot-remaining');
-    warningEl = el('div', 'epv-chatbot-warning');
-    warningEl.style.display = 'none';
-    meta.appendChild(remainingEl);
-    meta.appendChild(warningEl);
-    panel.appendChild(meta);
+    // Question counter intentionally hidden; the 20-message limit is still enforced
+    // silently via applyLimitBlock(). metaEl is kept (empty) so applyLeadState's
+    // metaEl.style.display toggle stays valid.
+    metaEl = el('div', 'epv-chatbot-meta');
+    panel.appendChild(metaEl);
 
     panel.appendChild(el('div', 'epv-chatbot-footer', 'Answers come from the Ease Pet Vet website.'));
 
@@ -134,21 +146,149 @@
     root.appendChild(launcherBtn);
     document.body.appendChild(root);
 
-    // Restore per-session state so the limit persists across reloads.
+    // Restore the per-session remaining count so the limit persists across reloads.
     if (sessionId) {
-      emailSaved = load(emailSavedKey()) === '1';
       var storedRem = load(remainingKey());
       if (storedRem != null && storedRem !== '') remaining = Number(storedRem);
     }
     updateUsageUI(null);
-    ensureGreeted();
+    applyLeadState();
   }
 
-  // Greets once per conversation. Client-only; never counts toward the limit.
-  function ensureGreeted() {
-    if (greeted) return;
-    greeted = true;
-    addBotMessage('Hi! I can answer questions about Ease Pet Vet — pricing, how it works for vets and pet parents, and support. How can I help?');
+  // Builds a labelled text field { wrap, input }. Enter submits the form.
+  function formField(labelText, type, id, placeholder, required) {
+    var wrap = el('div', 'epv-chatbot-form-field');
+    var label = el('label', 'epv-chatbot-form-label', labelText + (required ? ' *' : ''));
+    label.setAttribute('for', id);
+    var input = el('input', 'epv-chatbot-form-input');
+    input.id = id;
+    input.type = type;
+    input.setAttribute('placeholder', placeholder);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); submitLead(); }
+    });
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    return { wrap: wrap, input: input };
+  }
+
+  function buildForm() {
+    var form = el('div', 'epv-chatbot-form');
+
+    var head = el('div', 'epv-chatbot-form-head');
+    var formAvatar = el('div', 'epv-chatbot-form-avatar', ICONS.ease);
+    formAvatar.style.background = '#fff';
+    head.appendChild(formAvatar);
+    var headText = el('div', 'epv-chatbot-form-headtext');
+    headText.appendChild(el('div', 'epv-chatbot-form-title', "Let's get started"));
+    headText.appendChild(el('div', 'epv-chatbot-form-sub', 'Tell us a bit about you so we can help.'));
+    head.appendChild(headText);
+    form.appendChild(head);
+
+    var nameF = formField('Name', 'text', 'epv-lead-name', 'Your name', true);
+    var emailF = formField('Email', 'email', 'epv-lead-email', 'you@example.com', true);
+    var phoneF = formField('Contact number', 'tel', 'epv-lead-phone', 'Optional', false);
+    form.appendChild(nameF.wrap);
+    form.appendChild(emailF.wrap);
+    form.appendChild(phoneF.wrap);
+
+    var audWrap = el('div', 'epv-chatbot-form-field');
+    audWrap.appendChild(el('span', 'epv-chatbot-form-label', 'I am a: *'));
+    var audBtns = el('div', 'epv-chatbot-form-aud');
+    AUDIENCES.forEach(function (a) {
+      var b = el('button', 'epv-chatbot-audience-btn', a.label);
+      b.type = 'button';
+      b.dataset.value = a.value;
+      b.addEventListener('click', function () {
+        formAudience = a.value;
+        audBtns.querySelectorAll('.epv-chatbot-audience-btn').forEach(function (x) {
+          x.classList.toggle('epv-active', x.dataset.value === a.value);
+        });
+      });
+      audBtns.appendChild(b);
+    });
+    audWrap.appendChild(audBtns);
+    form.appendChild(audWrap);
+
+    var errorEl = el('div', 'epv-chatbot-form-error');
+    errorEl.style.display = 'none';
+    form.appendChild(errorEl);
+
+    var submit = el('button', 'epv-chatbot-form-submit', 'Submit');
+    submit.type = 'button';
+    submit.addEventListener('click', submitLead);
+    form.appendChild(submit);
+
+    form.appendChild(el('div', 'epv-chatbot-form-hint', 'You can start chatting right after you submit.'));
+
+    form._fields = { name: nameF.input, email: emailF.input, phone: phoneF.input, error: errorEl, submit: submit };
+    return form;
+  }
+
+  function showFormError(msg) {
+    var e = formEl._fields.error;
+    e.textContent = msg || '';
+    e.style.display = msg ? 'block' : 'none';
+  }
+
+  function submitLead() {
+    var f = formEl._fields;
+    var name = (f.name.value || '').trim();
+    var email = (f.email.value || '').trim();
+    var phone = (f.phone.value || '').trim();
+    if (!name) { showFormError('Please enter your name.'); f.name.focus(); return; }
+    if (!email) { showFormError('Please enter your email.'); f.email.focus(); return; }
+    if (email.indexOf('@') === -1) { showFormError('Email must contain @ (e.g. you@example.com).'); f.email.focus(); return; }
+    if (!EMAIL_RE.test(email)) { showFormError('Please enter a valid email address (e.g. you@example.com).'); f.email.focus(); return; }
+    if (!formAudience) { showFormError('Please tell us if you are a pet parent or a vet.'); return; }
+    showFormError('');
+    f.submit.disabled = true;
+    f.submit.textContent = 'Saving...';
+
+    var body = { name: name, email: email, phone: phone, audience: formAudience };
+    if (sessionId) body.sessionId = sessionId;
+
+    fetch(API_BASE_URL + '/api/chat/lead', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+      .then(function (out) {
+        if (!out.ok) {
+          showFormError((out.data && out.data.error) ? out.data.error : 'Could not save your details. Please try again.');
+          f.submit.disabled = false;
+          f.submit.textContent = 'Submit';
+          return;
+        }
+        if (out.data.sessionId) { sessionId = out.data.sessionId; store(SESSION_KEY, sessionId); }
+        audience = out.data.audience || formAudience;
+        store(AUDIENCE_KEY, audience);
+        leadName = name;
+        store(LEAD_KEY, JSON.stringify({ name: name, audience: audience }));
+        applyLeadState();
+      })
+      .catch(function () {
+        showFormError('Could not connect. Please try again.');
+        f.submit.disabled = false;
+        f.submit.textContent = 'Submit';
+      });
+  }
+
+  // Shows the form until a lead is captured, then reveals the chat (with the
+  // remaining-question counter) and greets the visitor by name once.
+  function applyLeadState() {
+    var done = !!leadName;
+    formEl.style.display = done ? 'none' : '';
+    messagesEl.style.display = done ? '' : 'none';
+    composerEl.style.display = done ? '' : 'none';
+    metaEl.style.display = done ? '' : 'none';
+    if (done && !greeted) {
+      greeted = true;
+      var hi = leadName ? ('Hi ' + leadName + '!') : 'Hi!';
+      addBotMessage(hi + ' I can answer questions about Ease Pet Vet — pricing, how it works for vets and pet parents, and support. How can I help?');
+      setTimeout(function () { if (inputEl && !inputEl.disabled) inputEl.focus(); }, 100);
+    }
   }
 
   // ---- usage / remaining count / limit block ----
@@ -156,30 +296,14 @@
     if (usage) {
       if (typeof usage.messageLimit === 'number') convLimit = usage.messageLimit;
       if (typeof usage.remainingMessages === 'number') remaining = usage.remainingMessages;
-      if (usage.emailSaved) emailSaved = true;
       limitReached = !!usage.limitReached || (remaining != null && remaining <= 0);
-      if (sessionId) {
-        if (remaining != null) store(remainingKey(), String(remaining));
-        if (emailSaved) store(emailSavedKey(), '1');
-      }
+      if (sessionId && remaining != null) store(remainingKey(), String(remaining));
     }
     renderRemaining();
     applyLimitBlock();
   }
 
-  function renderRemaining() {
-    var n = (remaining == null) ? convLimit : remaining;
-    if (n < 0) n = 0;
-    remainingEl.textContent = n + (n === 1 ? ' question remaining' : ' questions remaining');
-    if (n <= 3) {
-      warningEl.textContent = 'You have ' + n + (n === 1 ? ' question' : ' questions') + ' left in this conversation.';
-      warningEl.style.display = 'block';
-      remainingEl.classList.add('epv-low');
-    } else {
-      warningEl.style.display = 'none';
-      remainingEl.classList.remove('epv-low');
-    }
-  }
+  function renderRemaining() { /* counter hidden; limit enforced silently */ }
 
   function applyLimitBlock() {
     if (limitReached) {
@@ -191,90 +315,6 @@
       if (!busy) sendBtn.disabled = false;
       inputEl.setAttribute('placeholder', 'Type your question...');
     }
-  }
-
-  // ---- optional in-chat email prompt ----
-  function maybeShowEmailPrompt(usage) {
-    if (!usage || !usage.showEmailPrompt || emailSaved) return;
-    if (getDismissed().indexOf(usage.messagesUsed) > -1) return;
-    renderEmailPrompt(usage.messagesUsed);
-  }
-
-  function removeEmailPrompt() {
-    var e = document.getElementById('epv-emailprompt');
-    if (e) e.remove();
-  }
-
-  function renderEmailPrompt(count) {
-    removeEmailPrompt();
-    var card = el('div', 'epv-chatbot-emailprompt');
-    card.id = 'epv-emailprompt';
-    card.appendChild(el('div', 'epv-chatbot-emailprompt-text',
-      'Would you like to share your email? We can use it to follow up, send future updates, or help you if your chat limit is reached.'));
-    var btns = el('div', 'epv-chatbot-emailprompt-btns');
-    var shareBtn = el('button', 'epv-chatbot-emailprompt-btn epv-chatbot-emailprompt-primary', 'Share email');
-    shareBtn.type = 'button';
-    var laterBtn = el('button', 'epv-chatbot-emailprompt-btn', 'Maybe later');
-    laterBtn.type = 'button';
-    shareBtn.addEventListener('click', function () { showEmailField(card); });
-    laterBtn.addEventListener('click', function () { addDismissed(count); removeEmailPrompt(); });
-    btns.appendChild(shareBtn);
-    btns.appendChild(laterBtn);
-    card.appendChild(btns);
-    messagesEl.appendChild(card);
-    scrollDown();
-  }
-
-  function showEmailField(card) {
-    var btns = card.querySelector('.epv-chatbot-emailprompt-btns');
-    if (btns) btns.remove();
-    var row = el('div', 'epv-chatbot-emailprompt-row');
-    var input = el('input', 'epv-chatbot-emailprompt-input');
-    input.type = 'email';
-    input.setAttribute('placeholder', 'you@example.com');
-    var saveBtn = el('button', 'epv-chatbot-emailprompt-btn epv-chatbot-emailprompt-primary', 'Save email');
-    saveBtn.type = 'button';
-    var err = el('div', 'epv-chatbot-emailprompt-err');
-    err.style.display = 'none';
-
-    function doSave() {
-      var email = (input.value || '').trim();
-      if (!EMAIL_RE.test(email)) { err.textContent = 'Please enter a valid email address.'; err.style.display = 'block'; return; }
-      err.style.display = 'none';
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving...';
-      fetch(API_BASE_URL + '/api/chat/email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: sessionId, email: email }),
-      })
-        .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
-        .then(function (out) {
-          if (!out.ok) {
-            err.textContent = (out.data && out.data.error) ? out.data.error : 'Could not save your email. Please try again.';
-            err.style.display = 'block';
-            saveBtn.disabled = false; saveBtn.textContent = 'Save email';
-            return;
-          }
-          emailSaved = true;
-          if (sessionId) store(emailSavedKey(), '1');
-          removeEmailPrompt();
-          addBotMessage('Thanks — we’ll use this email only to follow up or send helpful updates.');
-        })
-        .catch(function () {
-          err.textContent = 'Could not connect. Please try again.';
-          err.style.display = 'block';
-          saveBtn.disabled = false; saveBtn.textContent = 'Save email';
-        });
-    }
-
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doSave(); } });
-    saveBtn.addEventListener('click', doSave);
-    row.appendChild(input);
-    row.appendChild(saveBtn);
-    card.appendChild(row);
-    card.appendChild(err);
-    input.focus();
   }
 
   function autoGrow() {
@@ -409,19 +449,18 @@
     sendBtn.disabled = value;
   }
 
-  // Starts a fresh conversation: new (anonymous) session, reset usage, re-greet.
+  // Starts a fresh conversation thread: keeps the captured lead (already given),
+  // resets the chat + question count, and re-greets.
   function clearChat() {
     if (typeTimer) { clearTimeout(typeTimer); typeTimer = null; }
-    removeEmailPrompt();
     messagesEl.innerHTML = '';
     sessionId = null;
     store(SESSION_KEY, '');
     greeted = false;
     remaining = null;
     limitReached = false;
-    emailSaved = false;
     updateUsageUI(null);
-    ensureGreeted();
+    applyLeadState();
   }
 
   function send() {
@@ -453,7 +492,6 @@
         if (out.data.sessionId) { sessionId = out.data.sessionId; store(SESSION_KEY, sessionId); }
         typeBotMessage(out.data.answer);
         updateUsageUI(out.data.usage);
-        maybeShowEmailPrompt(out.data.usage);
       })
       .catch(function () {
         hideTyping();

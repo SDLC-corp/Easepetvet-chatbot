@@ -123,8 +123,71 @@ export async function listChats({ page = 1, limit = 20, search, audience, dateFr
 // Keep only non-sensitive metadata fields in chat detail.
 function safeMetadata(meta) {
   if (!meta || typeof meta !== 'object') return {};
-  const { type, provider, mode, found, fallbackReason } = meta;
-  return { type, provider, mode, found, fallbackReason };
+  const { type, provider, mode, found, fallbackReason, source } = meta;
+  return { type, provider, mode, found, fallbackReason, source };
+}
+
+// Returns every public session token matching the current filters (all pages).
+// Powers "Select all across all pages".
+export async function listChatIds({ search, audience, dateFrom, dateTo } = {}) {
+  const { where, params } = buildChatFilters({ search, audience, dateFrom, dateTo });
+  const { rows } = await pool.query(
+    `SELECT s.session_id
+     FROM chat_sessions s
+     LEFT JOIN chat_leads l ON l.session_id = s.id
+     ${where}
+     ORDER BY s.created_at DESC`,
+    params,
+  );
+  return rows.map((r) => r.session_id);
+}
+
+// Returns full rows (no pagination) for the given session tokens, for CSV export.
+export async function exportChats(sessionTokens) {
+  const tokens = (sessionTokens ?? []).filter((t) => typeof t === 'string' && t.length > 0);
+  if (tokens.length === 0) return [];
+  const { rows } = await pool.query(
+    `SELECT s.session_id, s.audience, s.created_at,
+            l.name, l.email, l.phone,
+            mc.message_count, lm.last_message_at
+     FROM chat_sessions s
+     LEFT JOIN chat_leads l ON l.session_id = s.id
+     LEFT JOIN LATERAL (
+       SELECT count(*)::int AS message_count FROM chat_messages m WHERE m.session_id = s.id
+     ) mc ON true
+     LEFT JOIN LATERAL (
+       SELECT max(m.created_at) AS last_message_at FROM chat_messages m WHERE m.session_id = s.id
+     ) lm ON true
+     WHERE s.session_id = ANY($1)
+     ORDER BY COALESCE(lm.last_message_at, s.created_at) DESC`,
+    [tokens],
+  );
+  return rows.map((row) => ({
+    sessionId: row.session_id,
+    name: row.name ?? null,
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    audience: row.audience,
+    messageCount: row.message_count ?? 0,
+    firstSeen: row.created_at,
+    lastMessageAt: row.last_message_at ?? null,
+  }));
+}
+
+// Deletes one or more conversations by public session token: removes the lead
+// row(s), the session(s), and (via ON DELETE CASCADE) all their messages.
+// Returns the number of sessions deleted.
+export async function deleteChats(sessionTokens) {
+  const tokens = (sessionTokens ?? []).filter((t) => typeof t === 'string' && t.length > 0);
+  if (tokens.length === 0) return 0;
+  // Remove leads tied to these sessions first (FK is ON DELETE SET NULL, so we
+  // delete them explicitly to fully remove the visitor's record).
+  await pool.query(
+    'DELETE FROM chat_leads WHERE session_id IN (SELECT id FROM chat_sessions WHERE session_id = ANY($1))',
+    [tokens],
+  );
+  const { rowCount } = await pool.query('DELETE FROM chat_sessions WHERE session_id = ANY($1)', [tokens]);
+  return rowCount;
 }
 
 export async function getChatDetail(sessionToken) {

@@ -217,30 +217,6 @@
 .epv-chatbot-remaining.epv-low { color: #a85b00; font-weight: 600; }
 .epv-chatbot-warning { font-size: 11.5px; color: #a85b00; background: #fff6e6; border-radius: 7px; padding: 5px 9px; }
 
-/* Optional in-chat email prompt card */
-.epv-chatbot-emailprompt {
-  align-self: stretch; background: #eef4f5; border: 1px solid var(--epv-border);
-  border-radius: 12px; padding: 11px 12px; display: flex; flex-direction: column; gap: 9px;
-}
-.epv-chatbot-emailprompt-text { font-size: 12.5px; color: var(--epv-text); line-height: 1.45; }
-.epv-chatbot-emailprompt-btns { display: flex; gap: 8px; }
-.epv-chatbot-emailprompt-btn {
-  flex: 1 1 auto; padding: 8px 10px; font-size: 12.5px; font-weight: 600; border-radius: 9px;
-  border: 1px solid var(--epv-border); background: #fff; color: var(--epv-muted); cursor: pointer; font-family: inherit;
-}
-.epv-chatbot-emailprompt-btn:hover { border-color: var(--epv-accent); color: var(--epv-accent-dark); }
-.epv-chatbot-emailprompt-primary { background: var(--epv-accent); border-color: var(--epv-accent); color: #fff; }
-.epv-chatbot-emailprompt-primary:hover { background: var(--epv-accent-dark); color: #fff; }
-.epv-chatbot-emailprompt-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.epv-chatbot-emailprompt-row { display: flex; gap: 8px; }
-.epv-chatbot-emailprompt-input {
-  flex: 1 1 auto; border: 1px solid var(--epv-border); border-radius: 9px; padding: 8px 10px;
-  font-family: inherit; font-size: 13px; color: var(--epv-text); background: #fff;
-}
-.epv-chatbot-emailprompt-input:focus { outline: none; border-color: var(--epv-accent); }
-.epv-chatbot-emailprompt-row .epv-chatbot-emailprompt-btn { flex: 0 0 auto; }
-.epv-chatbot-emailprompt-err { font-size: 11.5px; color: #a12626; }
-
 .epv-chatbot-footer { text-align: center; font-size: 10.5px; color: var(--epv-muted); padding: 0 0 8px; background: #fff; }
 
 @media (max-width: 480px) {

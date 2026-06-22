@@ -46,7 +46,7 @@ export class ChatServiceError extends Error {
   }
 }
 
-export async function handleChatMessage({ message, audience, sessionId }) {
+export async function handleChatMessage({ message, audience, sessionId, source }) {
   const website = await getWebsiteByBaseUrl(BASE_URL);
   if (!website) {
     throw new ChatServiceError('Knowledge base is not ready. Run ingestion first.', 503);
@@ -81,7 +81,7 @@ export async function handleChatMessage({ message, audience, sessionId }) {
   // the LLM multi-turn memory.
   const history = await getRecentMessages(session.id, config.chat.historyTurns);
 
-  await insertMessage(session.id, 'user', message, { audience: session.audience });
+  await insertMessage(session.id, 'user', message, { audience: session.audience, source: source ?? null });
 
   const retrieval = await retrieve(message, website.id, { history });
   const formatted = await buildAnswer(message, session.audience, retrieval, history);
@@ -121,6 +121,7 @@ export async function handleChatMessage({ message, audience, sessionId }) {
     mode: formatted.mode,
     model: formatted.model ?? null,
     fallbackReason: formatted.fallbackReason ?? null,
+    source: source ?? null,
   });
 
   const messagesUsed = usedBefore + 1;

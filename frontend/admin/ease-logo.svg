@@ -1,0 +1,14 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ease">
+  <defs>
+    <mask id="epvEaseCut">
+      <rect width="64" height="64" fill="#fff"/>
+      <circle cx="42" cy="32" r="18.5" fill="#000"/>
+    </mask>
+  </defs>
+  <!-- teal crescent (open to the right) -->
+  <circle cx="30" cy="32" r="27" fill="#1AB5AC" mask="url(#epvEaseCut)"/>
+  <!-- dark-teal heart -->
+  <path d="M31 46 C24.5 40 16 35.5 16 28.3 C16 23 21.8 20.8 26 23.5 C28.2 24.9 29.9 27.4 31 29.6 C32.1 27.4 33.8 24.9 36 23.5 C40.2 20.8 46 23 46 28.3 C46 35.5 37.5 40 31 46 Z" fill="#0E8C84"/>
+  <!-- checkmark rising up-right into the opening -->
+  <path d="M24.5 31 L30.5 38 L49 15.5" fill="none" stroke="#0E8C84" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

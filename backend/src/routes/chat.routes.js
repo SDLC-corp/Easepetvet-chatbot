@@ -112,11 +112,17 @@ router.post('/message', async (req, res) => {
     audience = body.audience;
   }
 
+  // Accept either widgetSource (spec name) or source. Identifies the originating widget.
+  const rawSource = (typeof body.widgetSource === 'string') ? body.widgetSource
+    : (typeof body.source === 'string') ? body.source : undefined;
+  const source = rawSource ? rawSource.slice(0, 40) : undefined;
+
   try {
     const result = await handleChatMessage({
       message,
       audience,
       sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+      source,
     });
     return res.status(200).json(result);
   } catch (err) {
@@ -141,8 +147,23 @@ router.post('/email', async (req, res) => {
   if (email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)) {
     return res.status(400).json({ error: 'email must be a valid email address.' });
   }
+  // Accept either contactNumber (spec name) or phone for the optional contact number.
+  const rawPhone = (body.contactNumber !== undefined && body.contactNumber !== null && body.contactNumber !== '')
+    ? body.contactNumber : body.phone;
+  let phone = null;
+  if (rawPhone !== undefined && rawPhone !== null && rawPhone !== '') {
+    if (typeof rawPhone !== 'string') return res.status(400).json({ error: 'contactNumber must be a string.' });
+    phone = rawPhone.trim();
+    if (phone.length > MAX_PHONE_LENGTH) {
+      return res.status(400).json({ error: `phone must be ${MAX_PHONE_LENGTH} characters or fewer.` });
+    }
+  }
+  let audience;
+  if (typeof body.audience === 'string' && VALID_AUDIENCES.includes(body.audience)) {
+    audience = body.audience;
+  }
   try {
-    const result = await saveSessionEmail({ sessionId: body.sessionId, email });
+    const result = await saveSessionEmail({ sessionId: body.sessionId, email, phone, audience });
     return res.status(200).json(result);
   } catch (err) {
     if (err instanceof ChatServiceError) {

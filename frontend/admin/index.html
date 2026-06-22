@@ -11,6 +11,7 @@
   <!-- Token login screen -->
   <div id="epv-admin-login" class="epv-admin-login">
     <form id="epv-admin-login-form" class="epv-admin-login-card">
+      <img src="ease-logo-full.svg" alt="ease" class="epv-admin-login-logo" />
       <div class="epv-admin-login-title">Ease Pet Vet — Admin</div>
       <div class="epv-admin-login-sub">Enter the admin dashboard token to continue.</div>
       <input id="epv-admin-token-input" class="epv-admin-input" type="password"
@@ -24,10 +25,10 @@
   <div id="epv-admin-app" class="epv-admin-app" hidden>
     <header class="epv-admin-header">
       <div class="epv-admin-header-left">
-        <span class="epv-admin-logo">🐾</span>
+        <img src="ease-logo-full.svg" alt="ease" class="epv-admin-logo" />
         <div>
           <div class="epv-admin-title">Ease Pet Vet Chatbot Admin</div>
-          <div class="epv-admin-sub">Conversations &amp; knowledge base</div>
+          <div class="epv-admin-sub">Conversations &amp; leads</div>
         </div>
       </div>
       <div class="epv-admin-header-right">
@@ -41,12 +42,6 @@
     <!-- Stats -->
     <section id="epv-admin-stats" class="epv-admin-stats"></section>
 
-    <!-- Sync panel -->
-    <section class="epv-admin-card epv-admin-sync">
-      <div class="epv-admin-card-title">Knowledge base sync</div>
-      <div id="epv-admin-sync-body" class="epv-admin-sync-body">Loading…</div>
-    </section>
-
     <!-- Chats -->
     <section class="epv-admin-card">
       <div class="epv-admin-card-title">Conversations</div>
@@ -54,7 +49,7 @@
         <input id="epv-admin-search" class="epv-admin-input" type="search"
                placeholder="Search name, email, phone, or message…" />
         <select id="epv-admin-audience" class="epv-admin-input epv-admin-select">
-          <option value="">All audiences</option>
+          <option value="">All users</option>
           <option value="pet_parent">Pet Parent</option>
           <option value="vet">Vet</option>
           <option value="unknown">Not sure</option>
@@ -62,13 +57,27 @@
         <label class="epv-admin-date">From <input id="epv-admin-from" class="epv-admin-input" type="date" /></label>
         <label class="epv-admin-date">To <input id="epv-admin-to" class="epv-admin-input" type="date" /></label>
         <button id="epv-admin-apply" class="epv-admin-btn epv-admin-btn-secondary">Apply</button>
+        <button id="epv-admin-export-btn" class="epv-admin-btn epv-admin-btn-accent" disabled>Export selected</button>
+        <button id="epv-admin-delete-btn" class="epv-admin-btn epv-admin-btn-danger" disabled>Delete selected</button>
       </div>
+      <div id="epv-admin-selinfo" class="epv-admin-selinfo" hidden></div>
       <div class="epv-admin-table-wrap">
         <table class="epv-admin-table">
+          <colgroup>
+            <col style="width:34px" />
+            <col style="width:16%" />
+            <col style="width:18%" />
+            <col style="width:90px" />
+            <col style="width:90px" />
+            <col />
+            <col style="width:170px" />
+            <col style="width:52px" />
+          </colgroup>
           <thead>
             <tr>
+              <th class="epv-admin-check"><input type="checkbox" id="epv-admin-select-all" aria-label="Select all" /></th>
               <th>Name</th><th>Email</th><th>Contact</th><th>Audience</th>
-              <th>Last message</th><th>When</th><th class="epv-admin-num">Msgs</th>
+              <th>Conversation</th><th>Time</th><th class="epv-admin-num">Msgs</th>
             </tr>
           </thead>
           <tbody id="epv-admin-chat-rows"></tbody>

@@ -22,11 +22,14 @@ export async function resolveOrCreateSession(publicId, audience) {
       [publicId],
     );
     if (rows[0]) {
+      // Only upgrade audience; never downgrade a detected audience back to
+      // 'unknown' (intent detection sets it, later 'unknown' calls must not clobber).
       await pool.query(
-        'UPDATE chat_sessions SET audience = $2, updated_at = now() WHERE id = $1',
+        "UPDATE chat_sessions SET audience = CASE WHEN $2 <> 'unknown' THEN $2 ELSE audience END, updated_at = now() WHERE id = $1",
         [rows[0].id, normalized],
       );
-      return { id: rows[0].id, sessionId: rows[0].session_id, audience: normalized };
+      const { rows: cur } = await pool.query('SELECT audience FROM chat_sessions WHERE id = $1', [rows[0].id]);
+      return { id: rows[0].id, sessionId: rows[0].session_id, audience: cur[0] ? cur[0].audience : normalized };
     }
   }
 
