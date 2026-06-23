@@ -3,240 +3,104 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ease Pet Vet — Calmer pets, expert behavior care</title>
+  <title>Ease Pet Vet — Chat Assistant Demo</title>
   <link rel="stylesheet" href="ease-chatbot-widget.css" />
   <link rel="stylesheet" href="ease-chatbot-left.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root{
-      --bg:#e9f4f1; --surface:#ffffff; --ink:#143230; --muted:#577d77;
-      --teal:#15a399; --teal-d:#0c6e66; --coral:#ef7a59; --coral-d:#d65f3f;
+      --bg:#e9f4f1; --surface:#fff; --ink:#143230; --muted:#577d77;
+      --teal:#15a399; --teal-d:#0c6e66; --coral:#ef7a59;
       --border:#d2e6e1; --shadow:0 18px 50px rgba(15,70,64,.10);
       --display:'Fraunces',Georgia,serif; --body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     }
     *{box-sizing:border-box}
-    html{scroll-behavior:smooth}
-    body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.6;
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.6;padding:24px;
       -webkit-font-smoothing:antialiased;overflow-x:hidden}
-    .epd-wrap{max-width:1080px;margin:0 auto;padding:0 24px}
-    a{color:inherit}
-
-    /* atmosphere */
     .epd-blob{position:fixed;border-radius:50%;filter:blur(70px);opacity:.5;z-index:0;pointer-events:none}
-    .epd-blob.b1{width:520px;height:520px;background:#bfe7df;top:-180px;right:-140px}
-    .epd-blob.b2{width:420px;height:420px;background:#ffd9c9;bottom:-160px;left:-120px;opacity:.45}
+    .epd-blob.b1{width:480px;height:480px;background:#bfe7df;top:-160px;right:-120px}
+    .epd-blob.b2{width:380px;height:380px;background:#ffd9c9;bottom:-140px;left:-110px;opacity:.45}
 
-    /* header */
-    .epd-head{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;
-      padding:22px 0}
-    .epd-logo{height:34px;display:block}
-    .epd-head-cta{font-family:var(--body);font-weight:600;font-size:14px;text-decoration:none;
-      color:var(--teal-d);border:1.5px solid var(--border);background:var(--surface);
-      padding:9px 16px;border-radius:999px;transition:.2s}
-    .epd-head-cta:hover{border-color:var(--teal);transform:translateY(-1px)}
+    .epd-card{position:relative;z-index:2;background:var(--surface);border:1px solid var(--border);
+      border-radius:24px;box-shadow:var(--shadow);max-width:560px;width:100%;padding:40px 38px;text-align:center}
+    .epd-logo{height:36px;display:block;margin:0 auto 22px}
+    .epd-eyebrow{display:inline-block;font-weight:600;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;
+      color:var(--teal-d);background:rgba(21,163,153,.10);padding:5px 12px;border-radius:999px}
+    h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,5vw,38px);line-height:1.1;
+      letter-spacing:-.01em;margin:16px 0 0}
+    .epd-lead{color:var(--muted);font-size:16px;margin:14px 0 0}
 
-    /* hero */
-    .epd-hero{position:relative;z-index:2;padding:46px 0 30px;max-width:760px}
-    .epd-eyebrow{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:13px;
-      letter-spacing:.06em;text-transform:uppercase;color:var(--teal-d);
-      background:rgba(21,163,153,.10);padding:6px 13px;border-radius:999px}
-    .epd-eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--coral)}
-    h1.epd-title{font-family:var(--display);font-weight:600;font-size:clamp(40px,6.4vw,74px);
-      line-height:1.02;letter-spacing:-.015em;margin:20px 0 0}
-    h1.epd-title em{font-style:italic;color:var(--teal)}
-    .epd-lead{font-size:clamp(17px,2.2vw,20px);color:var(--muted);margin:18px 0 0;max-width:600px}
-    .epd-actions{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:30px}
-    .epd-btn{font-family:var(--body);font-weight:600;font-size:15px;text-decoration:none;
-      padding:14px 24px;border-radius:999px;border:1.5px solid transparent;cursor:pointer;transition:.2s}
-    .epd-btn.primary{background:var(--teal);color:#fff;box-shadow:0 10px 24px rgba(21,163,153,.30)}
-    .epd-btn.primary:hover{background:var(--teal-d);transform:translateY(-2px)}
-    .epd-btn.ghost{background:transparent;border-color:var(--border);color:var(--ink)}
-    .epd-btn.ghost:hover{border-color:var(--teal)}
+    .epd-bots{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:28px;text-align:left}
+    .epd-bot{border:1px solid var(--border);border-radius:16px;padding:18px}
+    .epd-bot .tag{font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--coral)}
+    .epd-bot h3{font-family:var(--display);font-weight:600;font-size:18px;margin:6px 0 4px}
+    .epd-bot p{margin:0;font-size:14px;color:var(--muted)}
+    .epd-hint{margin-top:24px;font-size:14px;color:var(--muted)}
+    .epd-hint em{color:var(--teal-d);font-style:normal;font-weight:600}
 
-    .epd-stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:42px}
-    .epd-stat{background:var(--surface);border:1px solid var(--border);border-radius:16px;
-      padding:16px 20px;min-width:150px;box-shadow:var(--shadow)}
-    .epd-stat b{font-family:var(--display);font-weight:600;font-size:26px;display:block;line-height:1.1}
-    .epd-stat span{font-size:13.5px;color:var(--muted)}
-
-    /* section frame */
-    .epd-section{position:relative;z-index:2;padding:56px 0}
-    .epd-kicker{font-weight:600;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--coral-d)}
-    .epd-h2{font-family:var(--display);font-weight:600;font-size:clamp(28px,4vw,40px);
-      letter-spacing:-.01em;margin:8px 0 0;line-height:1.1}
-    .epd-sub{color:var(--muted);margin:12px 0 0;max-width:560px}
-
-    /* chips */
-    .epd-chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
-    .epd-chip{background:var(--surface);border:1px solid var(--border);border-radius:999px;
-      padding:10px 18px;font-weight:500;font-size:14.5px;transition:.2s}
-    .epd-chip:hover{border-color:var(--teal);color:var(--teal-d);transform:translateY(-2px)}
-
-    /* steps (a real 3-step sequence) */
-    .epd-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:34px;counter-reset:s}
-    .epd-step{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:26px 22px;
-      box-shadow:var(--shadow)}
-    .epd-step::before{counter-increment:s;content:"0" counter(s);font-family:var(--display);font-weight:600;
-      font-size:30px;color:var(--teal);display:block;margin-bottom:10px}
-    .epd-step h3{margin:0 0 6px;font-size:18px}
-    .epd-step p{margin:0;color:var(--muted);font-size:14.5px}
-
-    /* two audiences */
-    .epd-duo{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:30px}
-    .epd-aud{border-radius:20px;padding:30px;border:1px solid var(--border)}
-    .epd-aud.parents{background:#fff}
-    .epd-aud.vets{background:#0e3b37;color:#eafaf6;border-color:#0e3b37}
-    .epd-aud h3{font-family:var(--display);font-weight:600;font-size:23px;margin:0 0 8px}
-    .epd-aud p{margin:0 0 16px;color:var(--muted);font-size:15px}
-    .epd-aud.vets p{color:#9ec9c2}
-    .epd-aud ul{margin:0;padding-left:18px}.epd-aud li{margin:7px 0;font-size:14.5px}
-
-    /* pricing */
-    .epd-price{display:flex;flex-wrap:wrap;align-items:center;gap:30px;background:var(--surface);
-      border:1px solid var(--border);border-radius:22px;padding:34px 38px;margin-top:26px;box-shadow:var(--shadow)}
-    .epd-price .amt{font-family:var(--display);font-weight:600;font-size:60px;line-height:1;color:var(--teal-d)}
-    .epd-price .amt small{font-size:18px;color:var(--muted);font-weight:500}
-
-    /* corner pointers to the chatbots (the signature) */
-    .epd-point{position:fixed;bottom:92px;z-index:40;max-width:188px;animation:bob 2.6s ease-in-out infinite}
-    .epd-point .bubble{background:var(--coral);color:#fff;font-weight:600;font-size:13.5px;line-height:1.35;
-      padding:10px 14px;border-radius:14px;box-shadow:0 10px 24px rgba(214,95,63,.35)}
+    /* corner pointers to the two chat assistants */
+    .epd-point{position:fixed;bottom:92px;z-index:40;max-width:184px;animation:bob 2.6s ease-in-out infinite}
+    .epd-point .bubble{background:var(--coral);color:#fff;font-weight:600;font-size:13px;line-height:1.35;
+      padding:9px 13px;border-radius:13px;box-shadow:0 10px 24px rgba(214,95,63,.35)}
     .epd-point .arrow{display:block;color:var(--coral)}
-    .epd-point-right{right:20px;text-align:right}
-    .epd-point-right .arrow{margin-left:auto;margin-right:14px}
-    .epd-point-left{left:20px;text-align:left}
-    .epd-point-left .arrow{margin-right:auto;margin-left:14px;transform:scaleX(-1)}
+    .epd-point-right{right:20px;text-align:right}.epd-point-right .arrow{margin-left:auto;margin-right:14px}
+    .epd-point-left{left:20px;text-align:left}.epd-point-left .arrow{margin-right:auto;margin-left:14px;transform:scaleX(-1)}
     @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
 
-    footer{position:relative;z-index:2;text-align:center;color:var(--muted);font-size:13.5px;
-      padding:40px 0 56px;border-top:1px solid var(--border);margin-top:30px}
-
-    @media(max-width:760px){
-      .epd-steps{grid-template-columns:1fr}.epd-duo{grid-template-columns:1fr}
-      .epd-point{display:none}  /* keep the corners clean on mobile; bubbles still show */
-    }
-    @media(prefers-reduced-motion:reduce){.epd-point{animation:none}*{scroll-behavior:auto}}
+    @media(max-width:640px){.epd-bots{grid-template-columns:1fr}.epd-point{display:none}}
+    @media(prefers-reduced-motion:reduce){.epd-point{animation:none}}
   </style>
 </head>
 <body>
   <div class="epd-blob b1"></div>
   <div class="epd-blob b2"></div>
 
-  <div class="epd-wrap">
-    <header class="epd-head">
-      <svg class="epd-logo" viewBox="0 0 250 72" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ease">
-        <defs><mask id="m"><rect width="72" height="72" fill="#fff"/><circle cx="46" cy="36" r="20.5" fill="#000"/></mask></defs>
-        <circle cx="33" cy="36" r="30" fill="#15A399" mask="url(#m)"/>
-        <path d="M34 51 C27 44.5 17.5 39.5 17.5 31.5 C17.5 25.5 24 23 28.7 26 C31.2 27.6 33 30.4 34 32.8 C35 30.4 36.8 27.6 39.3 26 C44 23 50.5 25.5 50.5 31.5 C50.5 39.5 41 44.5 34 51 Z" fill="#0C6E66"/>
-        <path d="M26.5 34.5 L33.5 42.5 L54 17" fill="none" stroke="#0C6E66" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <text x="80" y="53" font-family="Fraunces, Georgia, serif" font-size="54" font-weight="600" letter-spacing="-2" fill="#143230">ease</text>
-      </svg>
-      <a class="epd-head-cta" href="#help">Pet Parents &amp; Vets</a>
-    </header>
+  <main class="epd-card">
+    <svg class="epd-logo" viewBox="0 0 250 72" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ease">
+      <defs><mask id="m"><rect width="72" height="72" fill="#fff"/><circle cx="46" cy="36" r="20.5" fill="#000"/></mask></defs>
+      <circle cx="33" cy="36" r="30" fill="#15A399" mask="url(#m)"/>
+      <path d="M34 51 C27 44.5 17.5 39.5 17.5 31.5 C17.5 25.5 24 23 28.7 26 C31.2 27.6 33 30.4 34 32.8 C35 30.4 36.8 27.6 39.3 26 C44 23 50.5 25.5 50.5 31.5 C50.5 39.5 41 44.5 34 51 Z" fill="#0C6E66"/>
+      <path d="M26.5 34.5 L33.5 42.5 L54 17" fill="none" stroke="#0C6E66" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="80" y="53" font-family="Fraunces, Georgia, serif" font-size="54" font-weight="600" letter-spacing="-2" fill="#143230">ease</text>
+    </svg>
 
-    <section class="epd-hero">
-      <span class="epd-eyebrow"><span class="dot"></span> Behavior care, made easy</span>
-      <h1 class="epd-title">Help your pet feel <em>calm</em> again.</h1>
-      <p class="epd-lead">Ease pairs you with board-certified veterinary behaviorists to work through
-        anxiety, reactivity, and other tough behaviors — from the comfort of home, alongside your own vet.</p>
-      <div class="epd-actions">
-        <a class="epd-btn primary" href="#help">See how Ease helps</a>
-        <a class="epd-btn ghost" href="#pricing">Pricing</a>
+    <span class="epd-eyebrow">Demo</span>
+    <h1>This is the Ease Pet Vet website</h1>
+    <p class="epd-lead">Ease Pet Vet provides expert behavior care for pets. This page is here to demo the
+      two chat assistants that answer visitors' questions, right from the website.</p>
+
+    <div class="epd-bots">
+      <div class="epd-bot">
+        <span class="tag">Bottom-left</span>
+        <h3>Quick chat</h3>
+        <p>Jump straight in and ask anything — no form to fill.</p>
       </div>
-      <div class="epd-stats">
-        <div class="epd-stat"><b>100,000+</b><span>pets helped</span></div>
-        <div class="epd-stat"><b>$197</b><span>one-time, no subscription</span></div>
-        <div class="epd-stat"><b>DACVB</b><span>board-certified behaviorists</span></div>
+      <div class="epd-bot">
+        <span class="tag">Bottom-right</span>
+        <h3>Guided assistant</h3>
+        <p>Share a few details first, then chat with the team.</p>
       </div>
-    </section>
+    </div>
 
-    <section class="epd-section" id="help">
-      <span class="epd-kicker">What we help with</span>
-      <h2 class="epd-h2">Behavior problems, met with real expertise</h2>
-      <p class="epd-sub">If your pet is stressed, they're struggling. Ease builds a plan for the behaviors that make daily life hard.</p>
-      <div class="epd-chips">
-        <span class="epd-chip">Separation anxiety</span>
-        <span class="epd-chip">Noise &amp; storm phobia</span>
-        <span class="epd-chip">Leash reactivity</span>
-        <span class="epd-chip">Aggression</span>
-        <span class="epd-chip">House soiling</span>
-        <span class="epd-chip">Generalized anxiety</span>
-        <span class="epd-chip">Cat scratching</span>
-        <span class="epd-chip">Fear of sounds</span>
-      </div>
-    </section>
+    <p class="epd-hint">Open a chat bubble in either corner and try <em>"What does Ease help with?"</em></p>
+  </main>
 
-    <section class="epd-section">
-      <span class="epd-kicker">How it works</span>
-      <h2 class="epd-h2">Three steps to a calmer pet</h2>
-      <div class="epd-steps">
-        <div class="epd-step"><h3>Get referred</h3><p>Your vet refers you to Ease — enrolling a clinic is free, with no cost to the practice.</p></div>
-        <div class="epd-step"><h3>Get your plan</h3><p>A behaviorist builds a tailored treatment plan for your pet's specific behavior.</p></div>
-        <div class="epd-step"><h3>Practice daily</h3><p>Follow simple exercises about 15 minutes a day and track progress as things improve.</p></div>
-      </div>
-    </section>
-
-    <section class="epd-section">
-      <div class="epd-duo">
-        <div class="epd-aud parents">
-          <h3>For pet parents</h3>
-          <p>Expert behavior care without the stress of a clinic visit.</p>
-          <ul>
-            <li>Specialist guidance from home</li>
-            <li>A clear, step-by-step plan</li>
-            <li>Support when you need a hand</li>
-          </ul>
-        </div>
-        <div class="epd-aud vets">
-          <h3>For veterinary teams</h3>
-          <p>Extend your care beyond the exam room — at no cost to you.</p>
-          <ul>
-            <li>Veterinary behaviorists on your team</li>
-            <li>Easy online referrals</li>
-            <li>Free clinic enrollment</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <section class="epd-section" id="pricing">
-      <span class="epd-kicker">Simple pricing</span>
-      <h2 class="epd-h2">One plan. No surprises.</h2>
-      <div class="epd-price">
-        <div class="amt">$197<small> / most pets</small></div>
-        <div>
-          <p style="margin:0 0 6px;font-weight:600">A one-time fee — no subscriptions, no surprises.</p>
-          <p style="margin:0;color:var(--muted);font-size:14.5px">Need extra support? Optional one-on-one Zoom sessions are $75 each.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="epd-section" style="text-align:center;padding-bottom:20px">
-      <span class="epd-kicker">Two ways to get answers</span>
-      <h2 class="epd-h2">Questions? Our assistants are right here</h2>
-      <p class="epd-sub" style="margin-left:auto;margin-right:auto">
-        Use the chat in the corner of the screen — tell us about you for guided help, or just start asking. Try
-        <em>"What does Ease help with?"</em> or <em>"How much does it cost?"</em></p>
-    </section>
-  </div>
-
-  <footer>Ease Pet Vet — expert behavior care for pets, in partnership with your veterinarian.</footer>
-
-  <!-- Signature: corner pointers to the two chat assistants -->
+  <!-- corner pointers to the chat assistants -->
   <div class="epd-point epd-point-right" aria-hidden="true">
-    <div class="bubble">New here? Tell us about you, then chat &rarr;</div>
+    <div class="bubble">Guided assistant &rarr;</div>
     <svg class="arrow" width="54" height="46" viewBox="0 0 54 46" fill="none">
-      <path d="M6 4 C 30 6, 46 16, 46 40" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="1 0"/>
-      <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M6 4 C 30 6, 46 16, 46 40" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </div>
   <div class="epd-point epd-point-left" aria-hidden="true">
-    <div class="bubble">&larr; Or just jump in and ask anything</div>
+    <div class="bubble">&larr; Quick chat</div>
     <svg class="arrow" width="54" height="46" viewBox="0 0 54 46" fill="none">
       <path d="M6 4 C 30 6, 46 16, 46 40" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
-      <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </div>
 
@@ -247,26 +111,15 @@
         ? 'http://localhost:3000'
         : 'https://easepetvet-backend.onrender.com';
     window.EASE_CHATBOT_CONFIG = {
-      apiBaseUrl: EPV_API_BASE,
-      websiteBaseUrl: 'https://easepetvet.com',
-      emailLinkMode: 'gmail',
-      position: 'bottom-right',
-      theme: 'light',
-      defaultAudience: 'unknown'
+      apiBaseUrl: EPV_API_BASE, websiteBaseUrl: 'https://easepetvet.com',
+      emailLinkMode: 'gmail', position: 'bottom-right', theme: 'light', defaultAudience: 'unknown'
     };
   </script>
   <script src="ease-chatbot-widget.js" defer></script>
-
-  <!-- Second (left) intent-based chatbot: anonymous start, intent lead capture. -->
   <script>
     window.EASE_CHATBOT_LEFT_CONFIG = {
-      apiBaseUrl: EPV_API_BASE,
-      websiteBaseUrl: 'https://easepetvet.com',
-      emailLinkMode: 'gmail',
-      position: 'bottom-left',
-      theme: 'light',
-      mode: 'intent_based',
-      defaultAudience: 'unknown'
+      apiBaseUrl: EPV_API_BASE, websiteBaseUrl: 'https://easepetvet.com',
+      emailLinkMode: 'gmail', position: 'bottom-left', theme: 'light', mode: 'intent_based', defaultAudience: 'unknown'
     };
   </script>
   <script src="ease-chatbot-left.js" defer></script>
