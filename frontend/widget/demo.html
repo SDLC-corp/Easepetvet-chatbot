@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ease Pet Vet — Chat Assistant Demo</title>
+  <title>Explore Our AI Assistant Options — Ease Pet Vet</title>
   <link rel="stylesheet" href="ease-chatbot-widget.css" />
   <link rel="stylesheet" href="ease-chatbot-left.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,39 +18,50 @@
     }
     *{box-sizing:border-box}
     body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-      background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.6;padding:24px;
+      background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.6;padding:40px 24px;
       -webkit-font-smoothing:antialiased;overflow-x:hidden}
     .epd-blob{position:fixed;border-radius:50%;filter:blur(70px);opacity:.5;z-index:0;pointer-events:none}
     .epd-blob.b1{width:480px;height:480px;background:#bfe7df;top:-160px;right:-120px}
     .epd-blob.b2{width:380px;height:380px;background:#ffd9c9;bottom:-140px;left:-110px;opacity:.45}
 
-    .epd-card{position:relative;z-index:2;background:var(--surface);border:1px solid var(--border);
-      border-radius:24px;box-shadow:var(--shadow);max-width:560px;width:100%;padding:40px 38px;text-align:center}
-    .epd-logo{height:36px;display:block;margin:0 auto 22px}
+    .epd-wrap{position:relative;z-index:2;max-width:780px;width:100%;text-align:center}
+    .epd-logo{height:34px;display:block;margin:0 auto 22px}
     .epd-eyebrow{display:inline-block;font-weight:600;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;
       color:var(--teal-d);background:rgba(21,163,153,.10);padding:5px 12px;border-radius:999px}
-    h1{font-family:var(--display);font-weight:600;font-size:clamp(28px,5vw,38px);line-height:1.1;
+    h1{font-family:var(--display);font-weight:600;font-size:clamp(30px,5vw,44px);line-height:1.08;
       letter-spacing:-.01em;margin:16px 0 0}
-    .epd-lead{color:var(--muted);font-size:16px;margin:14px 0 0}
+    .epd-intro{color:var(--muted);font-size:17px;margin:14px auto 0;max-width:600px}
 
-    .epd-bots{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:28px;text-align:left}
-    .epd-bot{border:1px solid var(--border);border-radius:16px;padding:18px}
-    .epd-bot .tag{font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--coral)}
-    .epd-bot h3{font-family:var(--display);font-weight:600;font-size:18px;margin:6px 0 4px}
-    .epd-bot p{margin:0;font-size:14px;color:var(--muted)}
-    .epd-hint{margin-top:24px;font-size:14px;color:var(--muted)}
-    .epd-hint em{color:var(--teal-d);font-style:normal;font-weight:600}
+    .epd-cards{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:34px;text-align:left}
+    .epd-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px 26px;
+      box-shadow:var(--shadow)}
+    .epd-icon{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:22px;margin-bottom:14px}
+    .epd-card.form .epd-icon{background:rgba(21,163,153,.12)}
+    .epd-card.chat .epd-icon{background:rgba(239,122,89,.14)}
+    .epd-side{font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+    .epd-card.form .epd-side{color:var(--teal-d)}
+    .epd-card.chat .epd-side{color:var(--coral)}
+    .epd-card h2{font-family:var(--display);font-weight:600;font-size:21px;margin:4px 0 12px}
+    .epd-card ul{margin:0;padding-left:18px}
+    .epd-card li{margin:8px 0;font-size:14.5px;color:var(--muted)}
+    .epd-card li::marker{color:var(--teal)}
+    .epd-card.chat li::marker{color:var(--coral)}
 
-    /* corner pointers to the two chat assistants */
-    .epd-point{position:fixed;bottom:92px;z-index:40;max-width:184px;animation:bob 2.6s ease-in-out infinite}
-    .epd-point .bubble{background:var(--coral);color:#fff;font-weight:600;font-size:13px;line-height:1.35;
-      padding:9px 13px;border-radius:13px;box-shadow:0 10px 24px rgba(214,95,63,.35)}
-    .epd-point .arrow{display:block;color:var(--coral)}
-    .epd-point-right{right:20px;text-align:right}.epd-point-right .arrow{margin-left:auto;margin-right:14px}
-    .epd-point-left{left:20px;text-align:left}.epd-point-left .arrow{margin-right:auto;margin-left:14px;transform:scaleX(-1)}
+    .epd-foot{color:var(--muted);font-size:15px;margin:30px auto 0;max-width:620px}
+
+    /* corner pointers to the two assistants */
+    .epd-point{position:fixed;bottom:92px;z-index:40;max-width:188px;animation:bob 2.6s ease-in-out infinite}
+    .epd-point .bubble{color:#fff;font-weight:600;font-size:13px;line-height:1.35;padding:9px 13px;border-radius:13px}
+    .epd-point .arrow{display:block}
+    .epd-point-left{left:20px;text-align:left}
+    .epd-point-left .bubble{background:var(--teal);box-shadow:0 10px 24px rgba(12,110,102,.32)}
+    .epd-point-left .arrow{color:var(--teal);margin-right:auto;margin-left:14px;transform:scaleX(-1)}
+    .epd-point-right{right:20px;text-align:right}
+    .epd-point-right .bubble{background:var(--coral);box-shadow:0 10px 24px rgba(214,95,63,.35)}
+    .epd-point-right .arrow{color:var(--coral);margin-left:auto;margin-right:14px}
     @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
 
-    @media(max-width:640px){.epd-bots{grid-template-columns:1fr}.epd-point{display:none}}
+    @media(max-width:680px){.epd-cards{grid-template-columns:1fr}.epd-point{display:none}}
     @media(prefers-reduced-motion:reduce){.epd-point{animation:none}}
   </style>
 </head>
@@ -58,7 +69,7 @@
   <div class="epd-blob b1"></div>
   <div class="epd-blob b2"></div>
 
-  <main class="epd-card">
+  <main class="epd-wrap">
     <svg class="epd-logo" viewBox="0 0 250 72" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ease">
       <defs><mask id="m"><rect width="72" height="72" fill="#fff"/><circle cx="46" cy="36" r="20.5" fill="#000"/></mask></defs>
       <circle cx="33" cy="36" r="30" fill="#15A399" mask="url(#m)"/>
@@ -67,37 +78,47 @@
       <text x="80" y="53" font-family="Fraunces, Georgia, serif" font-size="54" font-weight="600" letter-spacing="-2" fill="#143230">ease</text>
     </svg>
 
-    <span class="epd-eyebrow">Demo</span>
-    <h1>This is the Ease Pet Vet website</h1>
-    <p class="epd-lead">Ease Pet Vet provides expert behavior care for pets. This page is here to demo the
-      two chat assistants that answer visitors' questions, right from the website.</p>
+    <span class="epd-eyebrow">Demonstration</span>
+    <h1>Explore Our AI Assistant Options</h1>
+    <p class="epd-intro">This page demonstrates two different ways customers can interact with the PetVet AI Assistant.</p>
 
-    <div class="epd-bots">
-      <div class="epd-bot">
-        <span class="tag">Bottom-left</span>
-        <h3>Quick chat</h3>
-        <p>Jump straight in and ask anything — no form to fill.</p>
+    <div class="epd-cards">
+      <div class="epd-card form">
+        <div class="epd-icon">📋</div>
+        <div class="epd-side">Left side</div>
+        <h2>Form-Based Assistant</h2>
+        <ul>
+          <li>Click the chatbot on the <strong>left</strong> to open the form-based experience.</li>
+          <li>Customers can quickly provide their details through a structured form.</li>
+          <li>Ideal for collecting accurate information in a simple, organized way.</li>
+        </ul>
       </div>
-      <div class="epd-bot">
-        <span class="tag">Bottom-right</span>
-        <h3>Guided assistant</h3>
-        <p>Share a few details first, then chat with the team.</p>
+      <div class="epd-card chat">
+        <div class="epd-icon">💬</div>
+        <div class="epd-side">Right side</div>
+        <h2>Conversational Assistant</h2>
+        <ul>
+          <li>Click the chatbot on the <strong>right</strong> to start an interactive conversation.</li>
+          <li>The assistant guides customers through questions and collects details naturally through chat.</li>
+          <li>Creates a more engaging and personalized experience.</li>
+        </ul>
       </div>
     </div>
 
-    <p class="epd-hint">Open a chat bubble in either corner and try <em>"What does Ease help with?"</em></p>
+    <p class="epd-foot">Feel free to explore both options and compare the different customer journeys. This is a
+      demonstration environment designed to showcase how the chatbot can be integrated into your website.</p>
   </main>
 
-  <!-- corner pointers to the chat assistants -->
-  <div class="epd-point epd-point-right" aria-hidden="true">
-    <div class="bubble">Guided assistant &rarr;</div>
+  <!-- corner pointers: left = form-based, right = conversational -->
+  <div class="epd-point epd-point-left" aria-hidden="true">
+    <div class="bubble">📋 Form-based &mdash; open here</div>
     <svg class="arrow" width="54" height="46" viewBox="0 0 54 46" fill="none">
       <path d="M6 4 C 30 6, 46 16, 46 40" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
       <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </div>
-  <div class="epd-point epd-point-left" aria-hidden="true">
-    <div class="bubble">&larr; Quick chat</div>
+  <div class="epd-point epd-point-right" aria-hidden="true">
+    <div class="bubble">💬 Conversational &mdash; open here</div>
     <svg class="arrow" width="54" height="46" viewBox="0 0 54 46" fill="none">
       <path d="M6 4 C 30 6, 46 16, 46 40" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
       <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -110,16 +131,20 @@
       (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
         ? 'http://localhost:3000'
         : 'https://easepetvet-backend.onrender.com';
+
+    // Form-based assistant -> LEFT corner.
     window.EASE_CHATBOT_CONFIG = {
       apiBaseUrl: EPV_API_BASE, websiteBaseUrl: 'https://easepetvet.com',
-      emailLinkMode: 'gmail', position: 'bottom-right', theme: 'light', defaultAudience: 'unknown'
+      emailLinkMode: 'gmail', position: 'bottom-left', theme: 'light', defaultAudience: 'unknown'
     };
   </script>
   <script src="ease-chatbot-widget.js" defer></script>
+
+  <!-- Conversational (intent-based) assistant -> RIGHT corner. -->
   <script>
     window.EASE_CHATBOT_LEFT_CONFIG = {
       apiBaseUrl: EPV_API_BASE, websiteBaseUrl: 'https://easepetvet.com',
-      emailLinkMode: 'gmail', position: 'bottom-left', theme: 'light', mode: 'intent_based', defaultAudience: 'unknown'
+      emailLinkMode: 'gmail', position: 'bottom-right', theme: 'light', mode: 'intent_based', defaultAudience: 'unknown'
     };
   </script>
   <script src="ease-chatbot-left.js" defer></script>
