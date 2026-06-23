@@ -12,12 +12,32 @@ import { logger } from '../shared/logger/logger.js';
 // through to the next provider, then to retrieval-only. The user never sees a
 // provider switch — only server logs record it.
 
-// Conversational answers (page chunks, pricing) benefit from an LLM. Exact
-// structured values (H1, headings, links, canonical, etc.) stay deterministic.
+// Conversational answers benefit from an LLM. Page chunks + pricing already did;
+// link/video/image/cta/faq lists now do too, so the LLM returns the single most
+// relevant one (with its URL) instead of dumping the whole list. Exact single
+// values (H1, canonical, og_*) stay deterministic.
+const CONVERSATIONAL_FACT_KEYS = new Set(['pricing', 'link', 'video', 'image', 'cta', 'faq', 'email', 'phone']);
+
 function isConversational(retrieval) {
   if (retrieval.type === 'chunk') return true;
-  if (retrieval.type === 'fact' && retrieval.factKey === 'pricing') return true;
+  if (retrieval.type === 'fact') return CONVERSATIONAL_FACT_KEYS.has(retrieval.factKey);
   return false;
+}
+
+// Video fact values are stored as "<heading> :: <vimeo player URL>", and the
+// player URL is domain-restricted (not publicly viewable). For the LLM context we
+// strip the player URL and expose the heading + the public page URL, so the model
+// hands the visitor a link that actually works.
+function contextRetrieval(retrieval) {
+  if (retrieval.type === 'fact' && retrieval.factKey === 'video') {
+    const results = (retrieval.results ?? []).map((r) => {
+      const v = String(r.value ?? '');
+      const sep = v.indexOf(' :: ');
+      return { value: sep > -1 ? v.slice(0, sep).trim() : v.trim(), url: r.url, title: r.title };
+    });
+    return { ...retrieval, results };
+  }
+  return retrieval;
 }
 
 // A provider answer is unusable if it is empty or just the canned not-found
@@ -75,14 +95,21 @@ export async function buildAnswer(question, audience, retrieval, history = []) {
     timeoutMs: config.chat.timeoutMs,
   };
 
+  const promptRetrieval = contextRetrieval(retrieval);
   let lastReason = null;
+  let aiJudgedNotFound = false;
   for (const provider of chain) {
     try {
-      const result = await callChatCompletion(provider, shared, question, audience, retrieval, history);
-      // Guard: if the provider returns empty or a not-found line while retrieval
-      // actually has results, treat it as a failure and try the next provider
-      // (and ultimately retrieval-only). This is what kept the same question
-      // intermittently "not found" on repeat.
+      const result = await callChatCompletion(provider, shared, question, audience, promptRetrieval, history);
+      // If the model explicitly returned the not-found line, it judged the
+      // retrieved context insufficient to answer (e.g. "is there a mobile app?"
+      // when there is none). Remember that — if every model agrees, we should show
+      // a clean "not found" rather than dumping the raw retrieved text.
+      if (String(result.answer ?? '').trim().startsWith(NOT_FOUND_ANSWER)) {
+        aiJudgedNotFound = true;
+      }
+      // Guard: empty or not-found answer while retrieval has results -> treat as a
+      // failure and try the next provider (then the fallbacks below).
       if (!isUsableAnswer(result.answer)) {
         lastReason = `${provider.name}_unusable_answer`;
         logger.warn({ provider: provider.name, reason: lastReason }, 'Chat provider gave an unusable answer despite retrieval results; trying next');
@@ -96,7 +123,17 @@ export async function buildAnswer(question, audience, retrieval, history = []) {
     }
   }
 
-  // Every configured provider failed or gave nothing usable -> deterministic
+  // If a model explicitly judged the question unanswerable from context, trust
+  // that verdict and return a clean, friendly not-found reply — never dump the raw
+  // retrieved chunk (which is what made "is there a mobile app?" return a wall of
+  // homepage text when the AI was unavailable).
+  if (aiJudgedNotFound) {
+    const support = config.chat.supportEmail;
+    const tail = support ? ` I can help with pricing, how Ease works, behavior topics, and support — or reach our team at ${support}.` : '';
+    return { answer: `${NOT_FOUND_ANSWER}${tail}`, mode: 'not_found', provider: 'none', model: null, fallbackReason: lastReason ?? 'ai_judged_not_found' };
+  }
+
+  // Otherwise (providers errored/rate-limited without judging) -> deterministic
   // retrieval-only answer built from the results we already have.
   return { ...formatRetrievalOnly(retrieval), fallbackReason: lastReason ?? 'all_providers_failed' };
 }

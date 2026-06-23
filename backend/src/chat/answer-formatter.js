@@ -51,17 +51,19 @@ function formatFacts(retrieval) {
       if (seen.has(link)) continue;
       seen.add(link);
       lines.push(heading ? `Watch "${heading}": ${link}` : `Watch the video: ${link}`);
-      if (lines.length >= 10) break;
+      if (lines.length >= 1) break; // single most-relevant video (no list)
     }
     if (lines.length === 0) return NOT_FOUND;
-    return `You can watch these Ease Pet Vet videos:\n- ${lines.join('\n- ')}`;
+    return `Here's a video you can watch:\n${lines[0]}`;
   }
 
   let listValues = values;
   if (retrieval.factKey === 'email') listValues = [...new Set(values.map(cleanEmail))];
 
+  // Single most-relevant item only (the AI path lists more only when asked; this
+  // deterministic fallback should never dump a list).
   const label = LIST_FACT_LABELS[retrieval.factKey] ?? 'Details';
-  return `${label} found on the page:\n- ${listValues.slice(0, 10).join('\n- ')}`;
+  return `${label.replace(/s$/, '')}: ${listValues[0]}`;
 }
 
 function formatPageAttribute(retrieval) {

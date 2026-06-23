@@ -53,13 +53,28 @@
     if (sessionId) store(leadStateKey(sessionId), JSON.stringify({ leadOfferActive: leadOfferActive, lastLeadIntent: lastLeadIntent }));
   }
 
-  var sessionId = load(SESSION_KEY) || null;
-  var audience = load(AUDIENCE_KEY) || 'unknown';
-  if (['vet', 'pet_parent', 'unknown'].indexOf(audience) < 0) audience = 'unknown';
-  var leadSaved = sessionId ? load(emailSavedKey(sessionId)) === '1' : false;
-  var dismissedCounts = loadDismissed(sessionId);
-  var _ls = loadLeadState(sessionId);
-  var leadOfferActive = _ls.leadOfferActive, lastLeadIntent = _ls.lastLeadIntent;
+  // Start a FRESH conversation on every page load. The transcript is not restored
+  // on reload, so reusing a stored session would carry hidden state (e.g. "email
+  // already provided", question count) that contradicts the empty chat the visitor
+  // sees — that's what made the bot say "we already have your email" in a brand-new
+  // conversation. Clear any leftover per-session state from a previous visit.
+  (function clearPreviousSession() {
+    try {
+      var prev = load(SESSION_KEY);
+      if (prev) {
+        localStorage.removeItem(emailSavedKey(prev));
+        localStorage.removeItem(dismissedKey(prev));
+        localStorage.removeItem(remainingKey(prev));
+        localStorage.removeItem(leadStateKey(prev));
+      }
+      localStorage.removeItem(SESSION_KEY);
+    } catch (e) {}
+  })();
+  var sessionId = null;
+  var audience = 'unknown';
+  var leadSaved = false;
+  var dismissedCounts = [];
+  var leadOfferActive = false, lastLeadIntent = 'general';
   var greeted = false, convLimit = 20, remaining = null, limitReached = false;
 
   /* ---------- agreement / conversion detection (left widget only) ---------- */
@@ -93,6 +108,13 @@
     if (audience === 'vet') return 'Sure — please share your email so our team can follow up with clinic/demo details. You can also add your contact number if you prefer a call.';
     if (audience === 'pet_parent') return 'Sure — please share your email so our team can follow up with helpful information. You can also add your contact number if you prefer a call.';
     return 'Sure — please share your email so our team can follow up with the right information. You can also add your contact number if you prefer a call.';
+  }
+  // A soft, natural ask that's appended to a normal answer (woven in, not a popup
+  // or an abrupt standalone message).
+  function wovenEmailAsk() {
+    if (audience === 'vet') return 'By the way, if you’d like our team to follow up with clinic or demo details, just share your email here and I’ll pass it along.';
+    if (audience === 'pet_parent') return 'By the way, if you’d like our team to follow up and help further, feel free to share your email here.';
+    return 'By the way, if you’d like our team to follow up with you, just share your email here and I’ll pass it along.';
   }
 
   var ICONS = {
@@ -208,20 +230,6 @@
     if (leadSaved) return;
     leadOfferActive = true; saveLeadState();
     addBotMessage(textWanted);
-  }
-
-  // After an answer, optionally ask for the email in-chat (Q1/Q5/Q10/Q15 cadence,
-  // or on a follow-up topic). Skipped if a lead is saved or the answer already
-  // asked for the email itself.
-  function maybeShowPrompt(usage, text, botAlreadyAsked) {
-    if (leadSaved || botAlreadyAsked || !usage) return;
-    // Ask after ~5 questions, and again right before the last question — but only
-    // if the email has not been given yet (leadSaved guards that above).
-    var used = usage.messagesUsed;
-    var beforeLast = (usage.messageLimit || convLimit) - 1; // 19 when the limit is 20
-    if (used === 5 || used === beforeLast) {
-      askEmailInChat(GENERIC_PROMPT);
-    }
   }
 
   // Save an email/phone the user typed directly in chat to this session (so the
@@ -381,31 +389,43 @@
           addErrorMessage((out.data && out.data.error) ? out.data.error : 'Something went wrong. Please try again.'); return;
         }
         if (out.data.sessionId) { sessionId = out.data.sessionId; store(SESSION_KEY, sessionId); }
-        var answer = out.data.answer;
-        typeBotMessage(answer);
-        updateUsageUI(out.data.usage);
+        var rawAnswer = out.data.answer;
+        var answer = rawAnswer;
+        var usage = out.data.usage;
+        var userIsLogin = LOGIN_RE.test(text);
 
         // Remember whether this exchange was a lead/conversion offer, so the next
         // "yes"/"ok" opens the capture form instead of repeating the answer.
-        var userIsLogin = LOGIN_RE.test(text);
-        leadOfferActive = BOT_ASK_RE.test(answer) || CONVERSION_RE.test(text) || CONVERSION_RE.test(answer);
+        leadOfferActive = BOT_ASK_RE.test(rawAnswer) || CONVERSION_RE.test(text) || CONVERSION_RE.test(rawAnswer);
         if (leadOfferActive) {
-          lastLeadIntent = leadIntentFrom((CONVERSION_RE.test(text) || userIsLogin) ? text : answer);
+          lastLeadIntent = leadIntentFrom((CONVERSION_RE.test(text) || userIsLogin) ? text : rawAnswer);
+        }
+
+        // Weave the optional email ask into THIS reply (after ~5 questions, and again
+        // right before the last one) instead of sending a separate abrupt message —
+        // only if no email yet and the answer didn't already ask for one.
+        var botAlreadyAsked = /your email|share your email|email address/i.test(rawAnswer) || BOT_ASK_RE.test(rawAnswer);
+        if (!leadSaved && !botAlreadyAsked && usage) {
+          var used = usage.messagesUsed;
+          var beforeLast = (usage.messageLimit || convLimit) - 1;
+          if (used === 5 || used === beforeLast) {
+            answer = rawAnswer + '\n\n' + wovenEmailAsk();
+            leadOfferActive = true;
+          }
         }
         saveLeadState();
+
+        typeBotMessage(answer);
+        updateUsageUI(usage);
 
         // Persist an email/phone the user typed inline (chat is then named by it).
         if (inlineEmail && sessionId) saveInlineLead(inlineEmail, inlinePhone);
 
-        // Login reliability (section I): make sure the login link is offered.
-        if (userIsLogin && !/\/login\b/i.test(answer) && !/login\./i.test(answer)) {
+        // Login reliability: make sure the login link is offered.
+        if (userIsLogin && !/\/login\b/i.test(rawAnswer) && !/login\./i.test(rawAnswer)) {
           addBotMessage('You can log in here: ' + WEBSITE_BASE_URL + '/login/');
           leadOfferActive = true; lastLeadIntent = 'login_help'; saveLeadState();
         }
-
-        // If the AI answer already asked for the email, don't pile on another ask.
-        var botAlreadyAsked = /your email|share your email|email address/i.test(answer) || BOT_ASK_RE.test(answer);
-        maybeShowPrompt(out.data.usage, text, botAlreadyAsked);
       })
       .catch(function () { hideTyping(); addErrorMessage('Sorry, I could not connect to the chatbot service. Please try again later.'); })
       .finally(function () { setBusy(false); applyLimitBlock(); if (!limitReached) inputEl.focus(); });

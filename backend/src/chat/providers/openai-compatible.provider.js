@@ -4,6 +4,8 @@
 // retrieved context; throws (with HTTP status in the message) on any failure so
 // the provider chain can fall through to the next provider.
 
+import { config } from '../../config/env.js';
+
 const SYSTEM_PROMPT = `You are the friendly virtual assistant for Ease Pet Vet, a service that supports pet parents and veterinary teams.
 Make every visitor feel welcomed, understood, and genuinely helped.
 
@@ -18,7 +20,7 @@ Grounding rules (always follow):
 - You can see the recent conversation. Use it to understand short or context-dependent replies (for example, a one-word answer that responds to your previous question). Using the conversation is allowed, but you must STILL only state website facts (prices, policies, services, medical or guarantee claims) that appear in the provided context. Never invent website facts, even if the conversation seems to imply them.
 - If a reply has no supporting context and you cannot help without inventing website facts, reply with exactly this sentence and nothing else: "I could not find this in the Ease Pet Vet website knowledge base." Otherwise, you may briefly acknowledge what the user said and ask one short clarifying question or guide them to contact the team, without inventing facts.
 - Never mention internal retrieval, chunks, embeddings, vectors, databases, "sources", or that the information "comes from the website". Just answer as a knowledgeable assistant.
-- Do not include any URLs or links in your answer.
+- Do not include URLs by default. EXCEPTION: if the user is asking for (or about) a link, video, image, page, or resource — or a specific page like pricing, FAQ, registration/vets, pets, or contact — include the SINGLE most relevant URL from the context directly in your reply, copied exactly. Give the link itself, do NOT merely offer to share it or ask if they want it. Choose the one that best matches what they asked for. Use the page URL shown as the "source"; never output a raw video player or embed URL (for example player.vimeo.com). Never paste a long list of links or videos unless the user explicitly asks for "all" of them.
 - Do not give veterinary diagnosis or emergency medical advice. For urgent pet health concerns, kindly encourage contacting a veterinarian right away.`;
 
 // Builds a compact context block from the top retrieval results + sources only.
@@ -54,7 +56,11 @@ export async function callChatCompletion(provider, shared, question, audience, r
   }
 
   const priorTurns = buildPriorTurns(history);
-  const userContent = `Audience: ${audience}\nQuestion: ${question}\n\n${buildContext(retrieval)}`;
+  const supportEmail = config.chat.supportEmail;
+  const contactNote = supportEmail
+    ? `\n\nOfficial contact email: ${supportEmail} — if the user asks how to contact/reach the team, for support, or for a contact/email/Gmail address, give them this email (you may also mention the contact page).`
+    : '';
+  const userContent = `Audience: ${audience}\nQuestion: ${question}\n\n${buildContext(retrieval)}${contactNote}`;
 
   const response = await fetch(`${provider.baseUrl}/chat/completions`, {
     method: 'POST',

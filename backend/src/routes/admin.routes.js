@@ -111,20 +111,15 @@ router.post('/chats/export', async (req, res) => {
   }
   try {
     const rows = await exportChats(ids);
-    const header = ['Display Name', 'Email', 'Name', 'Contact Number', 'Audience', 'Message Count', 'First Seen', 'Last Message At', 'Session ID'];
+    // Export only the email and the audience (Vet / Pet Parent / Not sure). Rows
+    // without an email have nothing to follow up on, so they're skipped.
+    const header = ['Email', 'Audience'];
     const lines = [header.map(csvCell).join(',')];
     for (const r of rows) {
-      const displayName = (r.email && r.email.trim()) || (r.name && r.name.trim()) || 'Anonymous Visitor';
+      if (!r.email || !r.email.trim()) continue;
       lines.push([
-        csvCell(displayName),
-        csvCell(r.email),
-        csvCell(r.name),
-        csvCell(r.phone),
+        csvCell(r.email.trim()),
         csvCell(AUDIENCE_LABELS[r.audience] || 'Not sure'),
-        csvCell(r.messageCount),
-        csvCell(formatTz(r.firstSeen)),
-        csvCell(formatTz(r.lastMessageAt)),
-        csvCell(r.sessionId),
       ].join(','));
     }
     const csv = '﻿' + lines.join('\r\n'); // BOM so Excel reads UTF-8
