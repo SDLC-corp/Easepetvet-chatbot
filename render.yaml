@@ -38,6 +38,9 @@ services:
         sync: false
       - key: ADMIN_DASHBOARD_TOKEN
         sync: false
+      # Encrypts email + phone at rest. Set any long secret; keep it stable.
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
       # Comma-separated origins allowed to call the API (your Vercel URL + the site
       # that embeds the widget). Example:
       # https://easepetvet-frontend.vercel.app,https://easepetvet.com,https://www.easepetvet.com

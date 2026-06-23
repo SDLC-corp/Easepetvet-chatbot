@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.js';
+import { decryptField, emailHash, encryptionEnabled } from '../shared/crypto/field-crypto.js';
 
 // Read-only queries that power the admin dashboard. All SQL is parameterized.
 // Only the public session token (chat_sessions.session_id) is exposed, never the
@@ -56,11 +57,21 @@ function buildChatFilters({ search, audience, dateFrom, dateTo }) {
   }
   if (search) {
     params.push(`%${search}%`);
-    const p = `$${params.length}`;
-    clauses.push(
-      `(l.name ILIKE ${p} OR l.email ILIKE ${p} OR l.phone ILIKE ${p}
-        OR EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = s.id AND m.content ILIKE ${p}))`,
-    );
+    const like = `$${params.length}`;
+    // name + message stay plaintext (searchable). Email/phone are encrypted, so
+    // search email by its keyed hash (exact match) when encryption is on; in
+    // plaintext mode fall back to ILIKE on email/phone.
+    const parts = [
+      `l.name ILIKE ${like}`,
+      `EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = s.id AND m.content ILIKE ${like})`,
+    ];
+    if (encryptionEnabled()) {
+      const h = emailHash(search.trim());
+      if (h) { params.push(h); parts.push(`l.email_hash = $${params.length}`); }
+    } else {
+      parts.push(`l.email ILIKE ${like}`, `l.phone ILIKE ${like}`);
+    }
+    clauses.push(`(${parts.join(' OR ')})`);
   }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   return { where, params };
@@ -107,8 +118,8 @@ export async function listChats({ page = 1, limit = 20, search, audience, dateFr
   const items = rows.map((row) => ({
     sessionId: row.session_id,
     name: row.name ?? null,
-    email: row.email ?? null,
-    phone: row.phone ?? null,
+    email: decryptField(row.email) ?? null,
+    phone: decryptField(row.phone) ?? null,
     audience: row.audience,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -165,8 +176,8 @@ export async function exportChats(sessionTokens) {
   return rows.map((row) => ({
     sessionId: row.session_id,
     name: row.name ?? null,
-    email: row.email ?? null,
-    phone: row.phone ?? null,
+    email: decryptField(row.email) ?? null,
+    phone: decryptField(row.phone) ?? null,
     audience: row.audience,
     messageCount: row.message_count ?? 0,
     firstSeen: row.created_at,
@@ -215,8 +226,8 @@ export async function getChatDetail(sessionToken) {
   const lead = leadRes.rows[0]
     ? {
         name: leadRes.rows[0].name,
-        email: leadRes.rows[0].email,
-        phone: leadRes.rows[0].phone,
+        email: decryptField(leadRes.rows[0].email),
+        phone: decryptField(leadRes.rows[0].phone),
         audience: leadRes.rows[0].audience,
         createdAt: leadRes.rows[0].created_at,
       }

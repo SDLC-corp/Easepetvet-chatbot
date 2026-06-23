@@ -9,6 +9,7 @@
     "dev": "node src/server.js",
     "migrate:up": "node src/db/migrate.js up",
     "migrate:down": "node src/db/migrate.js down",
+    "encrypt:backfill": "node src/scripts/encrypt-backfill.js",
     "ingest:create-jobs": "node src/scripts/ingest.js create-jobs",
     "ingest:process": "node src/scripts/ingest.js process",
     "ingest:status": "node src/scripts/ingest.js status",
