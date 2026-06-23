@@ -83,24 +83,24 @@
     <p class="epd-intro">This page demonstrates two different ways customers can interact with the PetVet AI Assistant.</p>
 
     <div class="epd-cards">
-      <div class="epd-card form">
-        <div class="epd-icon">📋</div>
-        <div class="epd-side">Left side</div>
-        <h2>Form-Based Assistant</h2>
-        <ul>
-          <li>Click the chatbot on the <strong>left</strong> to open the form-based experience.</li>
-          <li>Customers can quickly provide their details through a structured form.</li>
-          <li>Ideal for collecting accurate information in a simple, organized way.</li>
-        </ul>
-      </div>
       <div class="epd-card chat">
         <div class="epd-icon">💬</div>
-        <div class="epd-side">Right side</div>
+        <div class="epd-side">Left side</div>
         <h2>Conversational Assistant</h2>
         <ul>
-          <li>Click the chatbot on the <strong>right</strong> to start an interactive conversation.</li>
+          <li>Click the chatbot on the <strong>left</strong> to start an interactive conversation.</li>
           <li>The assistant guides customers through questions and collects details naturally through chat.</li>
           <li>Creates a more engaging and personalized experience.</li>
+        </ul>
+      </div>
+      <div class="epd-card form">
+        <div class="epd-icon">📋</div>
+        <div class="epd-side">Right side</div>
+        <h2>Form-Based Assistant</h2>
+        <ul>
+          <li>Click the chatbot on the <strong>right</strong> to open the form-based experience.</li>
+          <li>Customers can quickly provide their details through a structured form.</li>
+          <li>Ideal for collecting accurate information in a simple, organized way.</li>
         </ul>
       </div>
     </div>
@@ -109,16 +109,16 @@
       demonstration environment designed to showcase how the chatbot can be integrated into your website.</p>
   </main>
 
-  <!-- corner pointers: left = form-based, right = conversational -->
+  <!-- corner pointers: left = conversational, right = form-based -->
   <div class="epd-point epd-point-left" aria-hidden="true">
-    <div class="bubble">📋 Form-based &mdash; open here</div>
+    <div class="bubble">💬 Conversational &mdash; open here</div>
     <svg class="arrow" width="54" height="46" viewBox="0 0 54 46" fill="none">
       <path d="M6 4 C 30 6, 46 16, 46 40" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
       <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </div>
   <div class="epd-point epd-point-right" aria-hidden="true">
-    <div class="bubble">💬 Conversational &mdash; open here</div>
+    <div class="bubble">📋 Form-based &mdash; open here</div>
     <svg class="arrow" width="54" height="46" viewBox="0 0 54 46" fill="none">
       <path d="M6 4 C 30 6, 46 16, 46 40" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
       <path d="M38 32 L47 41 L37 44" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -132,19 +132,19 @@
         ? 'http://localhost:3000'
         : 'https://easepetvet-backend.onrender.com';
 
-    // Form-based assistant -> LEFT corner.
+    // Form-based assistant -> RIGHT corner.
     window.EASE_CHATBOT_CONFIG = {
       apiBaseUrl: EPV_API_BASE, websiteBaseUrl: 'https://easepetvet.com',
-      emailLinkMode: 'gmail', position: 'bottom-left', theme: 'light', defaultAudience: 'unknown'
+      emailLinkMode: 'gmail', position: 'bottom-right', theme: 'light', defaultAudience: 'unknown'
     };
   </script>
   <script src="ease-chatbot-widget.js" defer></script>
 
-  <!-- Conversational (intent-based) assistant -> RIGHT corner. -->
+  <!-- Conversational (intent-based) assistant -> LEFT corner. -->
   <script>
     window.EASE_CHATBOT_LEFT_CONFIG = {
       apiBaseUrl: EPV_API_BASE, websiteBaseUrl: 'https://easepetvet.com',
-      emailLinkMode: 'gmail', position: 'bottom-right', theme: 'light', mode: 'intent_based', defaultAudience: 'unknown'
+      emailLinkMode: 'gmail', position: 'bottom-left', theme: 'light', mode: 'intent_based', defaultAudience: 'unknown'
     };
   </script>
   <script src="ease-chatbot-left.js" defer></script>
