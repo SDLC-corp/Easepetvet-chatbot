@@ -116,20 +116,25 @@ function loadConfig() {
   if (!isOneOf(logLevel, VALID_LOG_LEVELS)) {
     errors.push(`LOG_LEVEL must be one of ${VALID_LOG_LEVELS.join(', ')} (received "${logLevel}")`);
   }
-  if (!isNonEmptyString(pgHost)) {
-    errors.push('PGHOST is required');
-  }
-  if (!isValidPort(pgPort)) {
-    errors.push(`PGPORT must be an integer between 1 and 65535 (received "${pgPort}")`);
-  }
-  if (!isNonEmptyString(pgUser)) {
-    errors.push('PGUSER is required');
-  }
-  if (!isNonEmptyString(pgPassword)) {
-    errors.push('PGPASSWORD is required');
-  }
-  if (!isNonEmptyString(pgDatabase)) {
-    errors.push('PGDATABASE is required');
+  // A single DATABASE_URL (e.g. Render/managed Postgres) is an accepted
+  // alternative to the individual PG* vars. Only require PG* when it's absent.
+  const hasDatabaseUrl = isNonEmptyString(process.env.DATABASE_URL);
+  if (!hasDatabaseUrl) {
+    if (!isNonEmptyString(pgHost)) {
+      errors.push('PGHOST is required (or set DATABASE_URL)');
+    }
+    if (!isValidPort(pgPort)) {
+      errors.push(`PGPORT must be an integer between 1 and 65535 (received "${pgPort}")`);
+    }
+    if (!isNonEmptyString(pgUser)) {
+      errors.push('PGUSER is required (or set DATABASE_URL)');
+    }
+    if (!isNonEmptyString(pgPassword)) {
+      errors.push('PGPASSWORD is required (or set DATABASE_URL)');
+    }
+    if (!isNonEmptyString(pgDatabase)) {
+      errors.push('PGDATABASE is required (or set DATABASE_URL)');
+    }
   }
   if (!Number.isInteger(Number(crawlDelayMs)) || Number(crawlDelayMs) < 0) {
     errors.push(`CRAWL_DELAY_MS must be an integer >= 0 (received "${crawlDelayMs}")`);

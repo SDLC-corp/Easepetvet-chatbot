@@ -5,6 +5,10 @@
 
   var TOKEN_KEY = 'epv_admin_token';
   var POLL_MS = 7000;
+  // API base. Empty = same-origin (when the admin is served by the backend). When
+  // the admin is hosted separately (e.g. Vercel), set window.EASE_ADMIN_API_BASE
+  // to the backend URL (e.g. https://easepetvet-backend.onrender.com).
+  var API_BASE = ((window.EASE_ADMIN_API_BASE || '') + '').replace(/\/+$/, '');
   var state = { page: 1, limit: 20, total: 0, filters: {}, pollTimer: null, selected: {}, selectAllAcross: false };
 
   function $(id) { return document.getElementById(id); }
@@ -40,7 +44,7 @@
   function api(path, opts) {
     opts = opts || {};
     opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + token() });
-    return fetch('/api/admin' + path, opts).then(function (res) {
+    return fetch(API_BASE + '/api/admin' + path, opts).then(function (res) {
       if (res.status === 401) { logout(); throw new Error('unauthorized'); }
       return res.json().then(function (data) { return { ok: res.ok, status: res.status, data: data }; });
     });
@@ -289,7 +293,7 @@
     var btn = $('epv-admin-export-btn');
     var orig = btn.textContent;
     btn.disabled = true; btn.textContent = 'Exporting…';
-    fetch('/api/admin/chats/export', {
+    fetch(API_BASE + '/api/admin/chats/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() },
       body: JSON.stringify({ sessionIds: ids }),
