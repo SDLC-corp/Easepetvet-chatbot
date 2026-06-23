@@ -1,4 +1,4 @@
-import { getWebsiteByBaseUrl } from '../repositories/website.repository.js';
+import { getWebsiteByBaseUrl, ensureWebsite } from '../repositories/website.repository.js';
 import { createWebsiteCrawlJobs, processPendingCrawlJobs } from '../ingestion/ingestion.service.js';
 import { resetAllJobsToPending } from '../repositories/crawl-job.repository.js';
 import { generateMissingEmbeddings } from '../embeddings/embedding.service.js';
@@ -41,9 +41,16 @@ function nextSyncDate(intervalDays) {
 }
 
 async function resolveWebsite() {
-  const website = await getWebsiteByBaseUrl(BASE_URL);
+  let website = await getWebsiteByBaseUrl(BASE_URL);
   if (!website) {
-    const err = new Error('Knowledge base is not ready. Run ingestion first.');
+    // Bootstrap on a fresh database: create the website row so the very first
+    // "Sync Now" can run the full crawl + embedding pipeline end to end (no shell
+    // / manual ingestion required for the initial load).
+    await ensureWebsite(BASE_URL, WEBSITE_NAME);
+    website = await getWebsiteByBaseUrl(BASE_URL);
+  }
+  if (!website) {
+    const err = new Error('Knowledge base could not be initialized.');
     err.statusCode = 503;
     throw err;
   }
