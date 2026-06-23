@@ -44,6 +44,10 @@ services:
       - key: CHAT_WIDGET_ALLOWED_ORIGINS
         sync: false
       # ---- non-secret defaults ----
+      # Use Gemini for embeddings (no OpenAI key needed). Must match the provider
+      # used to generate the stored vectors, so set this BEFORE running ingestion.
+      - key: EMBEDDING_PROVIDER
+        value: gemini
       - key: ADMIN_DASHBOARD_TIMEZONE
         value: America/Chicago
       - key: CHAT_SUPPORT_EMAIL
