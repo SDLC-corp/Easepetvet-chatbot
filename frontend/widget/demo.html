@@ -39,10 +39,14 @@
     </div>
   </div>
 
-  <!-- Local dev config: point the widget at the local backend. -->
+  <!-- API base: local backend during local dev, Render backend when deployed. -->
   <script>
+    var EPV_API_BASE =
+      (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        ? 'http://localhost:3000'
+        : 'https://easepetvet-backend.onrender.com';
     window.EASE_CHATBOT_CONFIG = {
-      apiBaseUrl: 'http://localhost:3000',
+      apiBaseUrl: EPV_API_BASE,
       websiteBaseUrl: 'https://easepetvet.com',
       emailLinkMode: 'gmail',
       position: 'bottom-right',
@@ -55,7 +59,7 @@
   <!-- Second (left) intent-based chatbot: anonymous start, intent lead capture. -->
   <script>
     window.EASE_CHATBOT_LEFT_CONFIG = {
-      apiBaseUrl: 'http://localhost:3000',
+      apiBaseUrl: EPV_API_BASE,
       websiteBaseUrl: 'https://easepetvet.com',
       emailLinkMode: 'gmail',
       position: 'bottom-left',

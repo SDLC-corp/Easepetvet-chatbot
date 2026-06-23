@@ -104,9 +104,13 @@
     </div>
   </div>
 
-  <!-- When hosting the admin separately from the backend (e.g. on Vercel), set this
-       to your backend URL. Leave empty when the backend serves this page. -->
-  <script>window.EASE_ADMIN_API_BASE = '';</script>
+  <!-- API base: same-origin for local dev; the Render backend when deployed. -->
+  <script>
+    window.EASE_ADMIN_API_BASE =
+      (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        ? ''
+        : 'https://easepetvet-backend.onrender.com';
+  </script>
   <script src="admin.js" defer></script>
 </body>
 </html>
