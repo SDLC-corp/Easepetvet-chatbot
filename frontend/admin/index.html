@@ -170,15 +170,19 @@
             <option value="inactive">Inactive</option>
           </select>
           <button id="epv-cq-apply" class="epv-admin-btn epv-admin-btn-secondary">Apply</button>
+          <button id="epv-cq-bulk-activate" class="epv-admin-btn epv-admin-btn-secondary" disabled>Activate</button>
+          <button id="epv-cq-bulk-deactivate" class="epv-admin-btn epv-admin-btn-ghost" disabled>Deactivate</button>
+          <button id="epv-cq-bulk-delete" class="epv-admin-btn epv-admin-btn-danger" disabled>Delete selected</button>
         </div>
         <div class="epv-admin-table-wrap">
           <table class="epv-admin-table">
             <colgroup>
-              <col style="width:24%" /><col /><col style="width:90px" />
+              <col style="width:34px" /><col style="width:22%" /><col /><col style="width:90px" />
               <col style="width:84px" /><col style="width:70px" /><col style="width:150px" /><col style="width:190px" />
             </colgroup>
             <thead>
               <tr>
+                <th class="epv-admin-check"><input type="checkbox" id="epv-cq-select-all" aria-label="Select all" /></th>
                 <th>Question</th><th>Answer</th><th>Audience</th><th>Status</th>
                 <th class="epv-admin-num">Priority</th><th>Updated</th><th>Actions</th>
               </tr>

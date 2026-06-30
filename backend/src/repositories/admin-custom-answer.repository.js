@@ -100,6 +100,26 @@ export async function deleteCustomAnswer({ websiteId, id }) {
   return rowCount > 0;
 }
 
+// Bulk delete by id list, website-scoped. Returns the number of rows deleted.
+export async function bulkDeleteCustomAnswers({ websiteId, ids }) {
+  if (!Array.isArray(ids) || ids.length === 0) return 0;
+  const { rowCount } = await pool.query(
+    'DELETE FROM admin_custom_answers WHERE website_id = $1 AND id = ANY($2)',
+    [websiteId, ids],
+  );
+  return rowCount;
+}
+
+// Bulk activate/deactivate by id list, website-scoped. Returns rows updated.
+export async function bulkSetCustomAnswerStatus({ websiteId, ids, status }) {
+  if (!Array.isArray(ids) || ids.length === 0) return 0;
+  const { rowCount } = await pool.query(
+    'UPDATE admin_custom_answers SET status = $3, updated_at = now() WHERE website_id = $1 AND id = ANY($2)',
+    [websiteId, ids, status],
+  );
+  return rowCount;
+}
+
 // Exact active match for a user's normalized question, honoring audience scope.
 // Specific audience beats 'all'; then higher priority; then most recently updated.
 export async function findExactCustomAnswer({ websiteId, normalizedQuestion, audience }) {

@@ -378,7 +378,7 @@
   }
 
   /* ---------- custom Q&A ---------- */
-  var cq = { loaded: false, filters: {}, editingId: null, pendingConfirm: false };
+  var cq = { loaded: false, filters: {}, editingId: null, pendingConfirm: false, selected: {} };
   var CQ_AUDIENCE = { all: 'All', vet: 'Vet', pet_parent: 'Pet Parent', unknown: 'Not sure' };
   function cqAudienceLabel(a) { return CQ_AUDIENCE[a] || 'All'; }
 
@@ -451,20 +451,56 @@
     if (f.search) q += '&search=' + encodeURIComponent(f.search);
     if (f.audience) q += '&audience=' + encodeURIComponent(f.audience);
     if (f.status) q += '&status=' + encodeURIComponent(f.status);
+    cq.selected = {}; // fresh list -> clear selection
     return api('/custom-answers' + q).then(function (out) {
       if (!out.ok) return;
       renderCustomRows(out.data.items || []);
     });
   }
 
+  function cqSelectedIds() { return Object.keys(cq.selected).map(Number); }
+
+  function cqRefreshBulk() {
+    var n = cqSelectedIds().length;
+    var del = $('epv-cq-bulk-delete'); del.disabled = n === 0;
+    del.textContent = n > 0 ? ('Delete selected (' + n + ')') : 'Delete selected';
+    $('epv-cq-bulk-activate').disabled = n === 0;
+    $('epv-cq-bulk-deactivate').disabled = n === 0;
+  }
+
+  function cqSyncSelectAll() {
+    var sa = $('epv-cq-select-all'); if (!sa) return;
+    var boxes = document.querySelectorAll('#epv-cq-rows .epv-admin-check input');
+    sa.checked = boxes.length > 0 && [].every.call(boxes, function (cb) { return cb.checked; });
+  }
+
+  function cqToggleSelectAll() {
+    var checked = $('epv-cq-select-all').checked;
+    cq.selected = {};
+    document.querySelectorAll('#epv-cq-rows .epv-admin-check input').forEach(function (cb) {
+      cb.checked = checked;
+      if (checked) cq.selected[cb.dataset.id] = true;
+    });
+    cqRefreshBulk();
+  }
+
   function renderCustomRows(items) {
     var tb = $('epv-cq-rows'); tb.textContent = '';
     if (!items.length) {
-      var tr = el('tr'); var td = el('td', 'epv-admin-empty'); td.colSpan = 7;
-      td.textContent = 'No custom answers yet.'; tr.appendChild(td); tb.appendChild(tr); return;
+      var tr = el('tr'); var td = el('td', 'epv-admin-empty'); td.colSpan = 8;
+      td.textContent = 'No custom answers yet.'; tr.appendChild(td); tb.appendChild(tr);
+      cqSyncSelectAll(); cqRefreshBulk(); return;
     }
     items.forEach(function (it) {
       var tr = el('tr');
+      var checkTd = el('td', 'epv-admin-check');
+      var cb = el('input'); cb.type = 'checkbox'; cb.setAttribute('aria-label', 'Select answer');
+      cb.dataset.id = it.id; cb.checked = !!cq.selected[it.id];
+      cb.addEventListener('change', function () {
+        if (cb.checked) cq.selected[it.id] = true; else delete cq.selected[it.id];
+        cqSyncSelectAll(); cqRefreshBulk();
+      });
+      checkTd.appendChild(cb); tr.appendChild(checkTd);
       tr.appendChild(el('td', 'epv-cq-qcell', it.question));
       tr.appendChild(el('td', 'epv-cq-acell', it.answer));
       var audTd = el('td'); audTd.appendChild(el('span', 'epv-admin-aud', cqAudienceLabel(it.audience))); tr.appendChild(audTd);
@@ -482,6 +518,7 @@
       actTd.appendChild(act); tr.appendChild(actTd);
       tb.appendChild(tr);
     });
+    cqSyncSelectAll(); cqRefreshBulk();
   }
 
   function cqReadForm() {
@@ -562,6 +599,27 @@
       if (out.ok) { if (cq.editingId === it.id) cqResetForm(); loadCustomAnswers(); }
       else alert((out.data && (out.data.message || out.data.error)) || 'Could not delete.');
     });
+  }
+
+  function cqBulkDelete() {
+    var ids = cqSelectedIds(); if (!ids.length) return;
+    if (!window.confirm('Delete ' + ids.length + ' custom answer' + (ids.length === 1 ? '' : 's') + '? This cannot be undone.')) return;
+    api('/custom-answers/bulk-delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids }),
+    }).then(function (out) {
+      if (out.ok) loadCustomAnswers();
+      else alert((out.data && (out.data.message || out.data.error)) || 'Could not delete.');
+    }).catch(function () { alert('Could not connect.'); });
+  }
+
+  function cqBulkStatus(status) {
+    var ids = cqSelectedIds(); if (!ids.length) return;
+    api('/custom-answers/bulk-status', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ids, status: status }),
+    }).then(function (out) {
+      if (out.ok) loadCustomAnswers();
+      else alert((out.data && (out.data.message || out.data.error)) || 'Could not update.');
+    }).catch(function () { alert('Could not connect.'); });
   }
 
   /* ---------- Custom Q&A answer autocomplete (@ emails, / links) ---------- */
@@ -726,6 +784,10 @@
     $('epv-cq-cancel').addEventListener('click', function () { cqResetForm(); });
     $('epv-cq-apply').addEventListener('click', function () { cq.filters = cqReadFilters(); loadCustomAnswers(); });
     $('epv-cq-search').addEventListener('keydown', function (e) { if (e.key === 'Enter') { cq.filters = cqReadFilters(); loadCustomAnswers(); } });
+    $('epv-cq-select-all').addEventListener('change', cqToggleSelectAll);
+    $('epv-cq-bulk-activate').addEventListener('click', function () { cqBulkStatus('active'); });
+    $('epv-cq-bulk-deactivate').addEventListener('click', function () { cqBulkStatus('inactive'); });
+    $('epv-cq-bulk-delete').addEventListener('click', cqBulkDelete);
     initAnswerAutocomplete();
 
     if (token()) { showApp(); loadAll(); } else { showLogin(); }

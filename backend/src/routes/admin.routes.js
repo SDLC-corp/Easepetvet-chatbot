@@ -4,6 +4,7 @@ import { getSummary, listChats, getChatDetail, deleteChats, listChatIds, exportC
 import {
   listCustomAnswers, getCustomAnswerById, createCustomAnswer, updateCustomAnswer,
   deleteCustomAnswer, checkDuplicateCustomAnswer,
+  bulkDeleteCustomAnswers, bulkSetCustomAnswerStatus,
 } from '../repositories/admin-custom-answer.repository.js';
 import { toNormalizedQuestion } from '../chat/custom-answer.service.js';
 import { questionSimilarity } from '../retrieval/query-normalizer.js';
@@ -417,6 +418,43 @@ router.delete('/custom-answers/:id', async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Admin custom-answers delete failed');
     return res.status(500).json({ error: 'Failed to delete custom answer.' });
+  }
+});
+
+// Parses a body.ids array into a clean list of positive integers.
+function parseIdList(raw) {
+  if (!Array.isArray(raw)) return null;
+  const ids = raw.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  return ids;
+}
+
+router.post('/custom-answers/bulk-delete', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const ids = parseIdList(req.body && req.body.ids);
+    if (!ids || ids.length === 0) return res.status(400).json({ error: 'ids (non-empty array) is required.' });
+    const deleted = await bulkDeleteCustomAnswers({ websiteId: website.id, ids });
+    return res.status(200).json({ deleted });
+  } catch (err) {
+    logger.error({ err }, 'Admin custom-answers bulk delete failed');
+    return res.status(500).json({ error: 'Failed to delete custom answers.' });
+  }
+});
+
+router.post('/custom-answers/bulk-status', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const ids = parseIdList(req.body && req.body.ids);
+    if (!ids || ids.length === 0) return res.status(400).json({ error: 'ids (non-empty array) is required.' });
+    const status = String(req.body && req.body.status);
+    if (!CUSTOM_STATUSES.includes(status)) return res.status(400).json({ error: `status must be one of ${CUSTOM_STATUSES.join(', ')}.` });
+    const updated = await bulkSetCustomAnswerStatus({ websiteId: website.id, ids, status });
+    return res.status(200).json({ updated, status });
+  } catch (err) {
+    logger.error({ err }, 'Admin custom-answers bulk status failed');
+    return res.status(500).json({ error: 'Failed to update custom answers.' });
   }
 });
 
