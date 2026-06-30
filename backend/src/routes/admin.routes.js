@@ -7,6 +7,7 @@ import {
 } from '../repositories/admin-custom-answer.repository.js';
 import { toNormalizedQuestion } from '../chat/custom-answer.service.js';
 import { questionSimilarity } from '../retrieval/query-normalizer.js';
+import { getWebsiteEmails, getWebsiteLinks } from '../repositories/suggestion.repository.js';
 import { getWebsiteByBaseUrl } from '../repositories/website.repository.js';
 import { getJobCountsByStatus } from '../repositories/crawl-job.repository.js';
 import { getEmbeddingStatusForWebsite } from '../embeddings/embedding.service.js';
@@ -416,6 +417,90 @@ router.delete('/custom-answers/:id', async (req, res) => {
   } catch (err) {
     logger.error({ err }, 'Admin custom-answers delete failed');
     return res.status(500).json({ error: 'Failed to delete custom answer.' });
+  }
+});
+
+/* ---------- Custom Q&A autocomplete suggestions ---------- */
+
+// name_search-style ranking. Returns a score (higher = better) or -1 to exclude
+// when q is non-empty and the item does not match at all.
+function rankEmail(item, q) {
+  if (!q) return 0;
+  const full = item.value.toLowerCase();
+  const local = full.split('@')[0];
+  const domain = full.split('@')[1] || '';
+  if (full.startsWith(q)) return 4;
+  if (local.startsWith(q)) return 3;
+  if (domain.startsWith(q)) return 2;
+  if (full.includes(q)) return 1;
+  return -1;
+}
+
+function lastSlug(url) {
+  const path = String(url || '').replace(/^https?:\/\/[^/]+/i, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+  return (path.split('/').filter(Boolean).pop() || '').toLowerCase();
+}
+
+function rankLink(item, q) {
+  if (!q) return 0;
+  const label = (item.label || '').toLowerCase();
+  const url = (item.url || '').toLowerCase();
+  const slug = lastSlug(item.url);
+  if (label.startsWith(q)) return 4;
+  if (slug.startsWith(q)) return 3;
+  if (label.includes(q)) return 2;
+  if (url.includes(q)) return 1;
+  return -1;
+}
+
+// Applies ranking + filtering + limit. With empty q, keeps all in a stable order
+// via tieBreak; with a query, drops non-matches and sorts best-first.
+function rankAndLimit(items, q, rankFn, limit, tieBreak) {
+  const scored = items
+    .map((item) => ({ item, score: rankFn(item, q) }))
+    .filter((s) => s.score >= 0);
+  scored.sort((a, b) => (b.score - a.score) || tieBreak(a.item, b.item));
+  return scored.slice(0, limit).map((s) => s.item);
+}
+
+function normalizeQ(raw, stripChar) {
+  let q = String(raw ?? '').trim().toLowerCase();
+  if (stripChar && q.startsWith(stripChar)) q = q.slice(stripChar.length);
+  return q.trim();
+}
+
+router.get('/suggestions/emails', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const q = normalizeQ(req.query.q, '@');
+    const emails = await getWebsiteEmails(website.id);
+    const items = rankAndLimit(emails, q, rankEmail, 20, (a, b) => a.value.localeCompare(b.value));
+    return res.status(200).json({ items });
+  } catch (err) {
+    logger.error({ err }, 'Admin email suggestions failed');
+    return res.status(500).json({ error: 'Failed to load email suggestions.' });
+  }
+});
+
+router.get('/suggestions/links', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const q = normalizeQ(req.query.q, '/');
+    const links = await getWebsiteLinks(website.id);
+    // Empty-q order: page-sourced first, then shortest URL (core pages on top).
+    const tieBreak = (a, b) => {
+      const pa = a.source === 'page' ? 0 : 1;
+      const pb = b.source === 'page' ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return (a.url || '').length - (b.url || '').length;
+    };
+    const items = rankAndLimit(links, q, rankLink, 30, tieBreak);
+    return res.status(200).json({ items });
+  } catch (err) {
+    logger.error({ err }, 'Admin link suggestions failed');
+    return res.status(500).json({ error: 'Failed to load link suggestions.' });
   }
 });
 

@@ -419,6 +419,7 @@
     $('epv-cq-form-title').textContent = 'Add Custom Q&A';
     $('epv-cq-save').textContent = 'Save';
     cqHideAlert(); cqShowError('');
+    if (typeof acClose === 'function') acClose();
   }
 
   function cqFillForm(it) {
@@ -563,6 +564,146 @@
     });
   }
 
+  /* ---------- Custom Q&A answer autocomplete (@ emails, / links) ---------- */
+  // Many2one-style shortcut autocomplete, bound ONLY to the answer textarea.
+  var ac = { open: false, loading: false, mode: null, q: null, tokenStart: 0, items: [], active: -1, debounce: null, seq: 0, cache: { email: null, link: null } };
+
+  function acEls() { return { input: $('epv-cq-answer'), box: $('epv-cq-suggest') }; }
+
+  // Active token = maximal non-whitespace run ending at the caret. It triggers
+  // only when it STARTS with @ or / — so URLs ("https://…") and completed emails
+  // ("support@…") never trigger (their token starts with a letter).
+  function acDetectToken() {
+    var input = acEls().input; if (!input) return null;
+    var val = input.value, pos = input.selectionStart;
+    if (pos == null) return null;
+    var start = pos;
+    while (start > 0 && !/\s/.test(val[start - 1])) start--;
+    var token = val.slice(start, pos);
+    if (token[0] === '@') return { mode: 'email', q: token.slice(1), tokenStart: start };
+    if (token[0] === '/') return { mode: 'link', q: token.slice(1), tokenStart: start };
+    return null;
+  }
+
+  function acReevaluate() {
+    var t = acDetectToken();
+    if (!t) { acClose(); return; }
+    if (ac.open && ac.mode === t.mode && ac.q === t.q && ac.tokenStart === t.tokenStart) return;
+    ac.open = true; ac.mode = t.mode; ac.q = t.q; ac.tokenStart = t.tokenStart;
+    acQuery(t.mode, t.q);
+  }
+
+  function acQuery(mode, q) {
+    if (ac.debounce) { clearTimeout(ac.debounce); ac.debounce = null; }
+    if (q === '') {
+      if (ac.cache[mode]) { acSetItems(ac.cache[mode]); }
+      else { acLoading(); acFetch(mode, '', true); }
+    } else {
+      acLoading();
+      ac.debounce = setTimeout(function () { acFetch(mode, q, false); }, 200);
+    }
+  }
+
+  function acFetch(mode, q, isEmpty) {
+    var seq = ++ac.seq;
+    var path = (mode === 'email' ? '/suggestions/emails?q=' : '/suggestions/links?q=') + encodeURIComponent(q);
+    api(path).then(function (out) {
+      if (seq !== ac.seq || !ac.open) return;
+      var items = (out.ok && out.data && Array.isArray(out.data.items)) ? out.data.items : [];
+      if (isEmpty) ac.cache[mode] = items;
+      acSetItems(items);
+    }).catch(function () { if (seq === ac.seq && ac.open) acSetItems([]); });
+  }
+
+  function acLoading() { ac.loading = true; ac.items = []; ac.active = -1; acRender(); }
+  function acSetItems(items) { ac.loading = false; ac.items = items || []; ac.active = ac.items.length ? 0 : -1; acRender(); }
+
+  function acRender() {
+    var box = acEls().box; if (!box) return;
+    if (!ac.open) { box.hidden = true; box.textContent = ''; return; }
+    box.textContent = '';
+    if (ac.loading) {
+      box.appendChild(el('div', 'epv-cq-suggest-empty', 'Loading…'));
+    } else if (!ac.items.length) {
+      box.appendChild(el('div', 'epv-cq-suggest-empty', ac.mode === 'email' ? 'No matching emails found' : 'No matching links found'));
+    } else {
+      ac.items.forEach(function (it, i) {
+        var row = el('div', 'epv-cq-suggest-row' + (i === ac.active ? ' is-active' : ''));
+        row.setAttribute('role', 'option');
+        row.appendChild(el('div', 'epv-cq-suggest-label', it.label || it.value));
+        if (ac.mode === 'link') row.appendChild(el('div', 'epv-cq-suggest-meta', it.url || it.value));
+        row.addEventListener('mouseenter', function () { ac.active = i; acHighlight(); });
+        row.addEventListener('click', function () { acSelect(i); });
+        box.appendChild(row);
+      });
+    }
+    box.hidden = false;
+  }
+
+  function acHighlight() {
+    var box = acEls().box; if (!box) return;
+    var rows = box.querySelectorAll('.epv-cq-suggest-row');
+    for (var i = 0; i < rows.length; i++) {
+      var on = i === ac.active;
+      rows[i].classList.toggle('is-active', on);
+      if (on && rows[i].scrollIntoView) rows[i].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function acMove(dir) {
+    if (!ac.items.length) return;
+    ac.active = (ac.active + dir + ac.items.length) % ac.items.length;
+    acHighlight();
+  }
+
+  function acSelect(i) {
+    var item = ac.items[i]; if (!item) return;
+    var input = acEls().input; if (!input) return;
+    var insertVal = ac.mode === 'link' ? (item.url || item.value) : item.value;
+    var val = input.value;
+    var before = val.slice(0, ac.tokenStart);
+    var after = val.slice(input.selectionStart);
+    var needsSpace = after.length === 0 || !/\s/.test(after[0]);
+    var head = before + insertVal + (needsSpace ? ' ' : '');
+    input.value = head + after;
+    var caret = head.length;
+    acClose();
+    input.focus();
+    input.setSelectionRange(caret, caret);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function acClose() {
+    if (ac.debounce) { clearTimeout(ac.debounce); ac.debounce = null; }
+    ac.open = false; ac.loading = false; ac.mode = null; ac.q = null; ac.items = []; ac.active = -1;
+    var box = acEls().box; if (box) { box.hidden = true; box.textContent = ''; }
+  }
+
+  function acKeydown(e) {
+    if (!ac.open) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); acMove(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); acMove(-1); }
+    else if (e.key === 'Enter') { if (ac.items.length && ac.active >= 0) { e.preventDefault(); e.stopPropagation(); acSelect(ac.active); } }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); acClose(); }
+  }
+
+  function initAnswerAutocomplete() {
+    var els = acEls(); if (!els.input || !els.box) return;
+    els.input.addEventListener('input', acReevaluate);
+    els.input.addEventListener('click', acReevaluate);
+    els.input.addEventListener('keyup', function (e) {
+      if (ac.open && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === 'Escape')) return;
+      acReevaluate();
+    });
+    els.input.addEventListener('keydown', acKeydown);
+    els.input.addEventListener('blur', function () { setTimeout(acClose, 150); });
+    // Keep focus when clicking a row (prevents blur from closing before click).
+    els.box.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    document.addEventListener('click', function (e) {
+      if (!els.box.hidden && !(e.target.closest && e.target.closest('.epv-cq-suggest-wrap'))) acClose();
+    });
+  }
+
   /* ---------- wire up ---------- */
   function init() {
     $('epv-admin-login-form').addEventListener('submit', doLogin);
@@ -585,6 +726,7 @@
     $('epv-cq-cancel').addEventListener('click', function () { cqResetForm(); });
     $('epv-cq-apply').addEventListener('click', function () { cq.filters = cqReadFilters(); loadCustomAnswers(); });
     $('epv-cq-search').addEventListener('keydown', function (e) { if (e.key === 'Enter') { cq.filters = cqReadFilters(); loadCustomAnswers(); } });
+    initAnswerAutocomplete();
 
     if (token()) { showApp(); loadAll(); } else { showLogin(); }
     setInterval(autoRefresh, 12000); // live-update the chat list every 12s

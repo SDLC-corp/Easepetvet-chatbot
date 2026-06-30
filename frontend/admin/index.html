@@ -112,8 +112,11 @@
           </label>
           <label class="epv-cq-field">
             <span>Answer</span>
-            <textarea id="epv-cq-answer" class="epv-admin-input" rows="4"
-                      placeholder="The exact answer to return. URLs and emails become clickable in chat."></textarea>
+            <div class="epv-cq-suggest-wrap">
+              <textarea id="epv-cq-answer" class="epv-admin-input" rows="4"
+                        placeholder="The exact answer to return. URLs and emails become clickable in chat."></textarea>
+              <div id="epv-cq-suggest" class="epv-cq-suggest" hidden role="listbox"></div>
+            </div>
           </label>
           <div class="epv-cq-row">
             <label class="epv-cq-field">
