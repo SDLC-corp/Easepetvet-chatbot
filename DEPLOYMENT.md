@@ -106,16 +106,26 @@ pg_restore --no-owner -d "postgresql://...EXTERNAL_URL..." ./epv.dump
 
 3. **Point the WIDGET at the backend.** On the page that embeds the widget (easepetvet.com), set:
    ```html
-   <script>
-     window.EASE_CHATBOT_CONFIG = { apiBaseUrl: 'https://easepetvet-backend.onrender.com', position: 'bottom-right' };
-     window.EASE_CHATBOT_LEFT_CONFIG = { apiBaseUrl: 'https://easepetvet-backend.onrender.com', position: 'bottom-left' };
-   </script>
    <link rel="stylesheet" href="https://easepetvet-frontend.vercel.app/widget/ease-chatbot-widget.css">
-   <script src="https://easepetvet-frontend.vercel.app/widget/ease-chatbot-widget.js" defer></script>
    <link rel="stylesheet" href="https://easepetvet-frontend.vercel.app/widget/ease-chatbot-left.css">
+
+   <script>
+     window.EASE_CHATBOT_LEFT_CONFIG = {
+       apiBaseUrl: 'https://easepetvet-backend.onrender.com',
+       websiteBaseUrl: 'https://easepetvet.com',
+       position: 'bottom-right',
+       theme: 'light',
+       defaultAudience: 'unknown',
+       emailLinkMode: 'gmail'
+     };
+   </script>
+
    <script src="https://easepetvet-frontend.vercel.app/widget/ease-chatbot-left.js" defer></script>
    ```
-   (For the Vercel-hosted `demo.html`, also change its `apiBaseUrl` from `localhost:3000` to the Render URL.)
+   The shipped chatbot is the conversation-based `ease-chatbot-left.js` (no upfront form). The
+   `ease-chatbot-widget.css` link must stay because the conversational widget reuses its shared
+   `.epv-chatbot-*` styles. `ease-chatbot-widget.js` (the legacy form-based variant) is intentionally
+   not loaded. (For the Vercel-hosted `demo.html`, also change its `apiBaseUrl` from `localhost:3000` to the Render URL.)
 
 ---
 

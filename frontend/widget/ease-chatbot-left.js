@@ -148,7 +148,7 @@
   function build() {
     root = el('div', 'epv-chatbot-root epv-pos-' + POSITION);
     launcherBtn = el('button', 'epv-chatbot-launcher', ICONS.chat);
-    launcherBtn.setAttribute('aria-label', 'Open Ease Pet Vet chat assistant (left)');
+    launcherBtn.setAttribute('aria-label', 'Open Ease Pet Vet Assistant');
     launcherBtn.addEventListener('click', toggle);
 
     panel = el('div', 'epv-chatbot-panel');

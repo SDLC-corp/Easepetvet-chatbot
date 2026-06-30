@@ -227,12 +227,20 @@ Set `CHAT_ANSWER_MODE=retrieval_only` to disable LLMs entirely.
 
 `frontend/widget/` and `frontend/admin/` — both dependency-free vanilla JS/CSS.
 
-**Embeddable chat widget** (`ease-chatbot-widget.js`, ~470 lines):
+**Embeddable chat widget** (`ease-chatbot-left.js`, the shipped conversation-based widget):
 - Self-contained, namespaced (`epv-chatbot-*`), no API keys in the browser.
-- Configurable via `data-*` attributes or a `window.EASE_CHATBOT_CONFIG` object:
-  API base URL, position, default audience, website base URL, email link mode.
-- Floating launcher + chat panel, audience selection, lead intro form, source
-  links, usage/limit warnings, in-chat email prompt, and conversation reset.
+- Configurable via a `window.EASE_CHATBOT_LEFT_CONFIG` object: API base URL,
+  position, default audience, website base URL, email link mode.
+- Conversation-based with **no upfront form**: starts anonymously, greets
+  immediately, detects audience (Vet / Pet Parent / Not sure) from the
+  conversation, and captures email/contact conversationally (via `/api/chat/email`)
+  only when follow-up is needed.
+- Floating launcher + chat panel, typewriter rendering, safe linkify, source
+  links, usage/limit handling, and conversation reset.
+- Reuses the shared `.epv-chatbot-*` styles from `ease-chatbot-widget.css`, so that
+  stylesheet stays loaded alongside it.
+- `ease-chatbot-widget.js` is retained as a legacy/form-based variant and
+  shared-style reference, but it is **not** loaded in the final demo or production embed.
 - A `demo.html` page is served for local testing.
 
 **Admin dashboard** (`frontend/admin/`, ~270 lines JS): token login, summary
