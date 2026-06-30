@@ -2,6 +2,7 @@ import { getWebsiteByBaseUrl } from '../repositories/website.repository.js';
 import { resolveOrCreateSession, insertMessage, countUserMessages, getRecentMessages } from '../repositories/chat.repository.js';
 import { getSessionEmail } from '../repositories/lead.repository.js';
 import { retrieve } from '../retrieval/retrieval.service.js';
+import { getSupportFallback } from '../retrieval/support-fallbacks.js';
 import { buildAnswer } from './ai-answer.service.js';
 import { NOT_FOUND_ANSWER } from './answer-formatter.js';
 import { config } from '../config/env.js';
@@ -86,11 +87,34 @@ export async function handleChatMessage({ message, audience, sessionId, source }
   const retrieval = await retrieve(message, website.id, { history });
   const formatted = await buildAnswer(message, session.audience, retrieval, history);
 
-  // Keep found/sources consistent with the visible answer: if the answer is the
-  // "not found" message (retrieval-only, or Groq judged the context too weak),
-  // report found:false with no sources so the UI never shows a stray source.
+  // Deterministic safe fallback. When the produced answer is the not-found line
+  // (retrieval found nothing, or a model judged the context insufficient) but the
+  // question is a known Ease topic, replace it with a safe support next step
+  // instead of a dead end. Urgent pet-health intent triggers even when retrieval
+  // found content. This runs AFTER buildAnswer on the single API path, so the AI
+  // can never override a fallback with a plain not-found.
+  const norm = retrieval.normalized ?? {};
   const answerIsNotFound = (formatted.answer || '').trim().startsWith(NOT_FOUND_ANSWER);
-  const found = retrieval.found && !answerIsNotFound;
+  const weak = !retrieval.found || answerIsNotFound;
+  const fallback = getSupportFallback({
+    originalQuery: message,
+    correctedQuery: norm.correctedQuery,
+    detectedIntents: norm.detectedIntents,
+    retrievalResult: retrieval,
+    weak,
+  });
+
+  // Final answer/mode/confidence after the fallback decision.
+  const answer = fallback ? fallback.answer : formatted.answer;
+  const mode = fallback ? 'fallback' : formatted.mode;
+  const provider = fallback ? 'fallback' : formatted.provider;
+  const answerConfidence = fallback
+    ? 'fallback'
+    : (answerIsNotFound ? 'not_found' : (retrieval.found ? 'exact' : 'related'));
+
+  // Keep found/sources consistent with the visible answer: a fallback or not-found
+  // answer reports found:false with no sources so the UI never shows a stray source.
+  const found = retrieval.found && !answerIsNotFound && !fallback;
   const sources = found ? (retrieval.sources ?? []) : [];
 
   // Dev-only trace: how a question resolved end to end (no secrets). Makes the
@@ -104,8 +128,12 @@ export async function handleChatMessage({ message, audience, sessionId, source }
         retrievalType: retrieval.type,
         retrievalFound: retrieval.found,
         resultCount: (retrieval.results ?? []).length,
-        answerMode: formatted.mode,
-        provider: formatted.provider,
+        detectedIntents: norm.detectedIntents ?? [],
+        corrections: (norm.corrections ?? []).length,
+        answerMode: mode,
+        answerConfidence,
+        fallbackIntent: fallback ? fallback.intent : null,
+        provider,
         fallbackReason: formatted.fallbackReason ?? null,
         finalFound: found,
       },
@@ -113,31 +141,37 @@ export async function handleChatMessage({ message, audience, sessionId, source }
     );
   }
 
-  await insertMessage(session.id, 'assistant', formatted.answer, {
+  await insertMessage(session.id, 'assistant', answer, {
     type: retrieval.type,
     found,
     sources,
-    provider: formatted.provider,
-    mode: formatted.mode,
+    provider,
+    mode,
     model: formatted.model ?? null,
     fallbackReason: formatted.fallbackReason ?? null,
+    answerConfidence,
+    fallbackIntent: fallback ? fallback.intent : null,
     source: source ?? null,
   });
 
   const messagesUsed = usedBefore + 1;
+  const usage = buildUsage(messagesUsed, emailExists, false);
+  // A demo/contact fallback invites the visitor to share their email; surface the
+  // email prompt so widgets that rely on the backend signal capture the lead.
+  if (fallback?.shouldTriggerLeadCapture && !emailExists) usage.showEmailPrompt = true;
 
   return {
     sessionId: session.sessionId,
     message,
-    answer: formatted.answer,
+    answer,
     found,
     type: retrieval.type,
     audience: session.audience,
     sources,
     results: found ? (retrieval.results ?? []) : [],
-    mode: formatted.mode,
-    provider: formatted.provider,
+    mode,
+    provider,
     error: null,
-    usage: buildUsage(messagesUsed, emailExists, false),
+    usage,
   };
 }

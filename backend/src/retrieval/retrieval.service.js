@@ -1,4 +1,6 @@
 import { detectQuestionType } from './question-detector.js';
+import { normalizeUserQuery } from './query-normalizer.js';
+import { buildExpandedQuery } from './intent-aliases.js';
 import {
   searchChunks,
   searchPageChunks,
@@ -134,11 +136,19 @@ function debugLogRetrieval(question, websiteId, result) {
 }
 
 async function retrieveInternal(question, websiteId, history = []) {
-  const detection = detectQuestionType(question);
-  const base = { type: detection.type, query: question, overview: Boolean(detection.overview) };
-  // Context-aware query for matching/gating only. detectQuestionType + low-value
-  // filtering keep using the raw question.
-  const searchQuery = buildContextualQuery(question, history);
+  // Normalize first: fix spelling, detect Ease intents, build an expansion. The
+  // corrected query drives detection + matching; the raw question is kept for
+  // display/storage and low-value filtering. The normalization object is attached
+  // to every result so chat.service can pick a safe support fallback.
+  const norm = normalizeUserQuery(question);
+  const corrected = norm.correctedQuery || question;
+  const expandedQuery = buildExpandedQuery(norm.detectedIntents);
+
+  const detection = detectQuestionType(corrected);
+  const base = { type: detection.type, query: question, overview: Boolean(detection.overview), normalized: norm };
+  // Context-aware query for matching/gating only. Low-value filtering keeps using
+  // the raw question.
+  const searchQuery = buildContextualQuery(corrected, history);
 
   // Greetings / thanks / goodbye: answered instantly, no DB or embedding call.
   if (detection.type === 'smalltalk') {
@@ -172,7 +182,7 @@ async function retrieveInternal(question, websiteId, history = []) {
           return { ...base, type: 'chunk', found: true, results: mapChunks(chunkRows), sources: uniqueSources([page]) };
         }
       }
-      return globalChunkSearch(websiteId, searchQuery, question, base);
+      return globalChunkSearch(websiteId, searchQuery, question, base, expandedQuery);
     }
     return { ...base, found: false, results: [], sources: [] };
   }
@@ -199,7 +209,11 @@ async function retrieveInternal(question, websiteId, history = []) {
   // overview): if embeddings are ready and nothing on the site is semantically
   // close (max similarity below minScore), the query is off-topic/nonsense — so a
   // stray keyword match (e.g. "question" -> FAQ page) must not surface a page.
-  if (!detection.overview && !detection.slug && (await isOffTopic(websiteId, searchQuery))) {
+  // Skip the gate when a known Ease intent was detected: the question is on-topic
+  // by construction, so it should reach retrieval (and, if recall is weak, a safe
+  // support fallback) rather than be rejected as off-topic.
+  if (!detection.overview && !detection.slug && norm.detectedIntents.length === 0
+      && (await isOffTopic(websiteId, searchQuery))) {
     return { ...base, found: false, results: [], sources: [] };
   }
 
@@ -221,30 +235,38 @@ async function retrieveInternal(question, websiteId, history = []) {
   }
 
   // No target page (or the page was empty): semantic vector search first, then
-  // full-text, then expanded-keyword full-text for overview questions.
-  return globalChunkSearch(websiteId, searchQuery, question, base);
+  // full-text, then expanded-keyword full-text for overview/intent questions.
+  return globalChunkSearch(websiteId, searchQuery, question, base, expandedQuery);
 }
 
 // Open-ended chunk search: vector first (when ready), then full-text. searchQuery
 // is the (possibly context-enriched) matching query; rawQuestion is the user's
 // own words, used only for low-value page filtering. Low-value pages are filtered
 // unless the question explicitly asks about them.
-async function globalChunkSearch(websiteId, searchQuery, rawQuestion, base) {
+async function globalChunkSearch(websiteId, searchQuery, rawQuestion, base, expandedQuery = '') {
   const vectorRows = await vectorSearch(websiteId, searchQuery, rawQuestion, CHUNK_LIMIT);
   if (vectorRows && vectorRows.length > 0) {
     return { ...base, type: 'chunk', found: true, results: mapChunks(vectorRows), sources: uniqueSources(vectorRows) };
   }
   // vectorRows === [] means vector ran and judged the query off-topic. Trust that
-  // and do NOT let full-text match a single stray word (the nonsense leak).
-  // Overview questions are clearly on-topic, so they still try the keyword retry.
-  // vectorRows === null means embeddings are unavailable -> full-text is the only
-  // signal, so fall through.
-  if (Array.isArray(vectorRows) && !base.overview) {
+  // and do NOT let full-text match a single stray word (the nonsense leak), UNLESS
+  // we have a retry signal: an overview question, or an intent-expanded query for a
+  // known Ease topic. vectorRows === null means embeddings are unavailable ->
+  // full-text is the only signal, so fall through.
+  const allowRetry = base.overview || Boolean(expandedQuery);
+  if (Array.isArray(vectorRows) && !allowRetry) {
     return { ...base, type: 'chunk', found: false, results: [], sources: [] };
   }
   let globalRows = filterLowValue(await searchChunks(websiteId, searchQuery, CHUNK_LIMIT), rawQuestion);
-  // Broad overview/service questions: if plain full-text is weak, retry with
-  // expanded site keywords so we still surface the core pages.
+  // Weak full-text on a known Ease topic: retry with the intent-expanded keywords
+  // so related content still surfaces (the "related" answer tier) instead of
+  // dead-ending. The deterministic support fallback covers the case where even
+  // this finds nothing.
+  if (globalRows.length === 0 && expandedQuery) {
+    globalRows = filterLowValue(await searchChunks(websiteId, expandedQuery, CHUNK_LIMIT), rawQuestion);
+  }
+  // Broad overview/service questions: if still weak, retry with expanded site
+  // keywords so we surface the core pages.
   if (globalRows.length === 0 && base.overview) {
     globalRows = filterLowValue(await searchChunks(websiteId, OVERVIEW_KEYWORDS, CHUNK_LIMIT), rawQuestion);
   }
