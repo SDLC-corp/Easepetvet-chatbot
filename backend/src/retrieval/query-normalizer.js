@@ -41,12 +41,35 @@ function levenshtein(a, b) {
   return prev[b.length];
 }
 
-// Similarity in [0, 1]: 1 means identical, 0 means completely different.
-function similarity(a, b) {
+// Similarity in [0, 1]: 1 means identical, 0 means completely different. Exported
+// for reuse by admin custom-answer fuzzy matching and duplicate detection.
+export function similarity(a, b) {
   if (!a && !b) return 1;
   const maxLen = Math.max(a.length, b.length);
   if (maxLen === 0) return 1;
   return 1 - levenshtein(a, b) / maxLen;
+}
+
+// Token-set similarity (fuzzywuzzy token_set_ratio style) in [0, 1]. More tolerant
+// of reordered/reworded questions than the char-level ratio, so it catches
+// duplicate-but-reworded admin questions ("how do i create an account" vs "how can
+// i create account"). Used for the non-blocking duplicate WARNING only; the chat
+// answer match stays on the stricter char-level `similarity` (typo-focused).
+export function questionSimilarity(a, b) {
+  const toks = (s) => [...new Set(String(s || '').toLowerCase().match(/[a-z0-9]+/g) || [])];
+  const ta = toks(a);
+  const tb = toks(b);
+  if (ta.length === 0 && tb.length === 0) return 1;
+  if (ta.length === 0 || tb.length === 0) return 0;
+  const setB = new Set(tb);
+  const inter = ta.filter((t) => setB.has(t)).sort();
+  const restA = ta.filter((t) => !setB.has(t)).sort();
+  const setA = new Set(ta);
+  const restB = tb.filter((t) => !setA.has(t)).sort();
+  const t0 = inter.join(' ');
+  const t1 = [...inter, ...restA].join(' ');
+  const t2 = [...inter, ...restB].join(' ');
+  return Math.max(similarity(t0, t1), similarity(t0, t2), similarity(t1, t2));
 }
 
 // A token we must never alter: email, URL, or phone number. Quoted text is

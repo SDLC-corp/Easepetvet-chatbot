@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { requireAdmin } from '../middleware/admin-auth.middleware.js';
 import { getSummary, listChats, getChatDetail, deleteChats, listChatIds, exportChats } from '../repositories/admin.repository.js';
+import {
+  listCustomAnswers, getCustomAnswerById, createCustomAnswer, updateCustomAnswer,
+  deleteCustomAnswer, checkDuplicateCustomAnswer,
+} from '../repositories/admin-custom-answer.repository.js';
+import { toNormalizedQuestion } from '../chat/custom-answer.service.js';
+import { questionSimilarity } from '../retrieval/query-normalizer.js';
 import { getWebsiteByBaseUrl } from '../repositories/website.repository.js';
 import { getJobCountsByStatus } from '../repositories/crawl-job.repository.js';
 import { getEmbeddingStatusForWebsite } from '../embeddings/embedding.service.js';
@@ -201,6 +207,215 @@ router.post('/sync/run', async (req, res) => {
     }
     logger.error({ err }, 'Admin sync run failed to start');
     return res.status(500).json({ error: 'Failed to start sync.' });
+  }
+});
+
+/* ---------- Custom Q&A overrides ---------- */
+
+const CUSTOM_AUDIENCES = ['all', 'vet', 'pet_parent', 'unknown'];
+const CUSTOM_STATUSES = ['active', 'inactive'];
+// Threshold for the non-blocking "possible duplicate" warning. Uses token-set
+// similarity (questionSimilarity), which rates reworded questions higher than the
+// char-level ratio, so genuine rewordings are flagged without over-warning.
+const SIMILAR_THRESHOLD = 0.82;
+
+// Validates + normalizes a create/update body. Returns { error } or { data }.
+function parseCustomAnswerBody(body) {
+  const b = body || {};
+  const question = typeof b.question === 'string' ? b.question.trim() : '';
+  const answer = typeof b.answer === 'string' ? b.answer.trim() : '';
+  const audience = b.audience == null || b.audience === '' ? 'all' : String(b.audience);
+  const status = b.status == null || b.status === '' ? 'active' : String(b.status);
+  const priority = b.priority == null || b.priority === '' ? 100 : Number(b.priority);
+
+  if (question.length < 3) return { error: 'question is required (min 3 characters).' };
+  if (answer.length < 3) return { error: 'answer is required (min 3 characters).' };
+  if (!CUSTOM_AUDIENCES.includes(audience)) return { error: `audience must be one of ${CUSTOM_AUDIENCES.join(', ')}.` };
+  if (!CUSTOM_STATUSES.includes(status)) return { error: `status must be one of ${CUSTOM_STATUSES.join(', ')}.` };
+  if (!Number.isFinite(priority)) return { error: 'priority must be a number.' };
+
+  const normalizedQuestion = toNormalizedQuestion(question);
+  if (!normalizedQuestion) return { error: 'question could not be normalized.' };
+  return { data: { question, answer, audience, status, priority: Math.trunc(priority), normalizedQuestion } };
+}
+
+// Finds the closest non-exact same-audience answer (>= SIMILAR_THRESHOLD), used to
+// warn about possible duplicates. Excludes the row being edited.
+async function findSimilarCustomAnswer(websiteId, normalizedQuestion, audience, excludeId) {
+  const { items } = await listCustomAnswers({ websiteId, audience, limit: 2000 });
+  let best = null;
+  for (const it of items) {
+    if (excludeId != null && it.id === Number(excludeId)) continue;
+    if (it.normalizedQuestion === normalizedQuestion) continue; // exact handled separately
+    const score = questionSimilarity(normalizedQuestion, it.normalizedQuestion);
+    if (score >= SIMILAR_THRESHOLD && (!best || score > best.similarity)) {
+      best = { id: it.id, question: it.question, audience: it.audience, similarity: Number(score.toFixed(2)) };
+    }
+  }
+  return best;
+}
+
+router.get('/custom-answers', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const { search, audience, status, limit, offset } = req.query;
+    if (audience && !CUSTOM_AUDIENCES.includes(String(audience))) {
+      return res.status(400).json({ error: `audience must be one of ${CUSTOM_AUDIENCES.join(', ')}.` });
+    }
+    if (status && !CUSTOM_STATUSES.includes(String(status))) {
+      return res.status(400).json({ error: `status must be one of ${CUSTOM_STATUSES.join(', ')}.` });
+    }
+    const result = await listCustomAnswers({
+      websiteId: website.id,
+      search: search ? String(search).trim() : undefined,
+      audience: audience ? String(audience) : undefined,
+      status: status ? String(status) : undefined,
+      limit: limit ? Number(limit) : 50,
+      offset: offset ? Number(offset) : 0,
+    });
+    return res.status(200).json({
+      items: result.items,
+      pagination: { limit: result.limit, offset: result.offset, total: result.total },
+    });
+  } catch (err) {
+    logger.error({ err }, 'Admin custom-answers list failed');
+    return res.status(500).json({ error: 'Failed to load custom answers.' });
+  }
+});
+
+router.post('/custom-answers/check-duplicate', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+    const audience = req.body?.audience == null || req.body.audience === '' ? 'all' : String(req.body.audience);
+    const excludeId = req.body?.excludeId != null ? Number(req.body.excludeId) : null;
+    if (question.length < 3) return res.status(400).json({ error: 'question is required (min 3 characters).' });
+    if (!CUSTOM_AUDIENCES.includes(audience)) return res.status(400).json({ error: 'invalid audience.' });
+
+    const normalizedQuestion = toNormalizedQuestion(question);
+    const exact = await checkDuplicateCustomAnswer({ websiteId: website.id, normalizedQuestion, audience, excludeId });
+    const similar = exact ? null : await findSimilarCustomAnswer(website.id, normalizedQuestion, audience, excludeId);
+    const matches = [];
+    if (exact) matches.push({ id: exact.id, question: exact.question, audience: exact.audience, similarity: 1 });
+    if (similar) matches.push(similar);
+    return res.status(200).json({
+      exactDuplicate: Boolean(exact),
+      possibleDuplicate: Boolean(similar),
+      matches,
+    });
+  } catch (err) {
+    logger.error({ err }, 'Admin custom-answers check-duplicate failed');
+    return res.status(500).json({ error: 'Failed to check duplicate.' });
+  }
+});
+
+router.post('/custom-answers', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const parsed = parseCustomAnswerBody(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const { question, normalizedQuestion, answer, audience, status, priority } = parsed.data;
+
+    // Exact duplicate -> block.
+    const exact = await checkDuplicateCustomAnswer({ websiteId: website.id, normalizedQuestion, audience });
+    if (exact) {
+      return res.status(409).json({
+        error: 'duplicate_question',
+        message: 'This question is already added. Please edit the existing answer instead.',
+        existing: { id: exact.id, question: exact.question, audience: exact.audience },
+      });
+    }
+    // Similar duplicate -> require confirmation.
+    if (req.body?.confirmSimilarDuplicate !== true) {
+      const similar = await findSimilarCustomAnswer(website.id, normalizedQuestion, audience, null);
+      if (similar) {
+        return res.status(409).json({
+          error: 'similar_question',
+          message: 'A similar question already exists. Please confirm if you still want to add this as a separate answer.',
+          canOverride: true,
+          existing: similar,
+        });
+      }
+    }
+
+    const created = await createCustomAnswer({
+      websiteId: website.id, question, normalizedQuestion, answer, audience, status, priority,
+      createdBy: 'admin',
+    });
+    return res.status(201).json({ item: created });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'duplicate_question', message: 'This question is already added.' });
+    }
+    logger.error({ err }, 'Admin custom-answers create failed');
+    return res.status(500).json({ error: 'Failed to create custom answer.' });
+  }
+});
+
+router.put('/custom-answers/:id', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id.' });
+    const existing = await getCustomAnswerById({ websiteId: website.id, id });
+    if (!existing) return res.status(404).json({ error: 'Custom answer not found.' });
+
+    const parsed = parseCustomAnswerBody(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const { question, normalizedQuestion, answer, audience, status, priority } = parsed.data;
+
+    // Re-check duplicates only when the matching key (question/audience) changed.
+    if (normalizedQuestion !== existing.normalizedQuestion || audience !== existing.audience) {
+      const dup = await checkDuplicateCustomAnswer({ websiteId: website.id, normalizedQuestion, audience, excludeId: id });
+      if (dup) {
+        return res.status(409).json({
+          error: 'duplicate_question',
+          message: 'This question is already added. Please edit the existing answer instead.',
+          existing: { id: dup.id, question: dup.question, audience: dup.audience },
+        });
+      }
+      if (req.body?.confirmSimilarDuplicate !== true) {
+        const similar = await findSimilarCustomAnswer(website.id, normalizedQuestion, audience, id);
+        if (similar) {
+          return res.status(409).json({
+            error: 'similar_question',
+            message: 'A similar question already exists. Please confirm if you still want to keep this as a separate answer.',
+            canOverride: true,
+            existing: similar,
+          });
+        }
+      }
+    }
+
+    const updated = await updateCustomAnswer({
+      websiteId: website.id, id, question, normalizedQuestion, answer, audience, status, priority,
+    });
+    return res.status(200).json({ item: updated });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'duplicate_question', message: 'This question is already added.' });
+    }
+    logger.error({ err }, 'Admin custom-answers update failed');
+    return res.status(500).json({ error: 'Failed to update custom answer.' });
+  }
+});
+
+router.delete('/custom-answers/:id', async (req, res) => {
+  try {
+    const website = await resolveWebsiteId();
+    if (!website) return res.status(503).json({ error: 'Knowledge base is not ready.' });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id.' });
+    const deleted = await deleteCustomAnswer({ websiteId: website.id, id });
+    if (!deleted) return res.status(404).json({ error: 'Custom answer not found.' });
+    return res.status(200).json({ deleted: true });
+  } catch (err) {
+    logger.error({ err }, 'Admin custom-answers delete failed');
+    return res.status(500).json({ error: 'Failed to delete custom answer.' });
   }
 });
 

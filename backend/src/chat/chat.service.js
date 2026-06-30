@@ -3,6 +3,7 @@ import { resolveOrCreateSession, insertMessage, countUserMessages, getRecentMess
 import { getSessionEmail } from '../repositories/lead.repository.js';
 import { retrieve } from '../retrieval/retrieval.service.js';
 import { getSupportFallback } from '../retrieval/support-fallbacks.js';
+import { findCustomAnswerForQuestion } from './custom-answer.service.js';
 import { buildAnswer } from './ai-answer.service.js';
 import { NOT_FOUND_ANSWER } from './answer-formatter.js';
 import { config } from '../config/env.js';
@@ -83,6 +84,40 @@ export async function handleChatMessage({ message, audience, sessionId, source }
   const history = await getRecentMessages(session.id, config.chat.historyTurns);
 
   await insertMessage(session.id, 'user', message, { audience: session.audience, source: source ?? null });
+
+  // Admin custom-answer override: highest priority. If an admin authored an answer
+  // for this question (exact normalized, or fuzzy >= 0.90), return it verbatim and
+  // skip retrieval/AI/fallback entirely. The AI never rewrites an admin answer.
+  const custom = await findCustomAnswerForQuestion({ websiteId: website.id, message, audience: session.audience });
+  if (custom.matched) {
+    await insertMessage(session.id, 'assistant', custom.answer, {
+      type: 'custom',
+      found: true,
+      sources: [],
+      provider: 'admin_custom',
+      mode: 'admin_custom_answer',
+      answerConfidence: 'admin_custom',
+      customAnswerId: custom.customAnswerId,
+      matchType: custom.matchType,
+      similarity: custom.similarity,
+      source: source ?? null,
+    });
+    const used = usedBefore + 1;
+    return {
+      sessionId: session.sessionId,
+      message,
+      answer: custom.answer,
+      found: true,
+      type: 'custom',
+      audience: session.audience,
+      sources: [],
+      results: [],
+      mode: 'admin_custom_answer',
+      provider: 'admin_custom',
+      error: null,
+      usage: buildUsage(used, emailExists, false),
+    };
+  }
 
   const retrieval = await retrieve(message, website.id, { history });
   const formatted = await buildAnswer(message, session.audience, retrieval, history);

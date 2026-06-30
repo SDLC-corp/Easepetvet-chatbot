@@ -39,6 +39,14 @@
       </div>
     </header>
 
+    <!-- Tabs -->
+    <nav class="epv-admin-tabs">
+      <button id="epv-tab-chats" class="epv-admin-tab is-active" data-view="chats">Conversations</button>
+      <button id="epv-tab-custom" class="epv-admin-tab" data-view="custom">Custom Q&amp;A</button>
+    </nav>
+
+    <!-- View: Conversations -->
+    <div id="epv-admin-view-chats">
     <!-- Stats -->
     <section id="epv-admin-stats" class="epv-admin-stats"></section>
 
@@ -89,6 +97,90 @@
         <button id="epv-admin-next" class="epv-admin-btn epv-admin-btn-ghost">Next ›</button>
       </div>
     </section>
+    </div><!-- /view-chats -->
+
+    <!-- View: Custom Q&A -->
+    <div id="epv-admin-view-custom" hidden>
+      <section class="epv-admin-card">
+        <div class="epv-admin-card-title" id="epv-cq-form-title">Add Custom Q&amp;A</div>
+        <form id="epv-cq-form" class="epv-cq-form" autocomplete="off">
+          <input type="hidden" id="epv-cq-id" />
+          <label class="epv-cq-field">
+            <span>Question</span>
+            <textarea id="epv-cq-question" class="epv-admin-input" rows="2"
+                      placeholder="e.g. How do I create an account?"></textarea>
+          </label>
+          <label class="epv-cq-field">
+            <span>Answer</span>
+            <textarea id="epv-cq-answer" class="epv-admin-input" rows="4"
+                      placeholder="The exact answer to return. URLs and emails become clickable in chat."></textarea>
+          </label>
+          <div class="epv-cq-row">
+            <label class="epv-cq-field">
+              <span>Audience</span>
+              <select id="epv-cq-audience" class="epv-admin-input epv-admin-select">
+                <option value="all">All</option>
+                <option value="vet">Vet</option>
+                <option value="pet_parent">Pet Parent</option>
+                <option value="unknown">Not sure</option>
+              </select>
+            </label>
+            <label class="epv-cq-field">
+              <span>Status</span>
+              <select id="epv-cq-status" class="epv-admin-input epv-admin-select">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+            <label class="epv-cq-field epv-cq-field-narrow">
+              <span>Priority</span>
+              <input id="epv-cq-priority" class="epv-admin-input" type="number" value="100" />
+            </label>
+          </div>
+          <div id="epv-cq-alert" class="epv-cq-alert" hidden></div>
+          <div id="epv-cq-form-error" class="epv-admin-login-error" hidden></div>
+          <div class="epv-cq-actions">
+            <button type="submit" id="epv-cq-save" class="epv-admin-btn epv-admin-btn-primary">Save</button>
+            <button type="button" id="epv-cq-cancel" class="epv-admin-btn epv-admin-btn-ghost">Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="epv-admin-card">
+        <div class="epv-admin-card-title">Saved answers</div>
+        <div class="epv-admin-filters">
+          <input id="epv-cq-search" class="epv-admin-input" type="search" placeholder="Search question or answer…" />
+          <select id="epv-cq-filter-audience" class="epv-admin-input epv-admin-select">
+            <option value="">All audiences</option>
+            <option value="all">All</option>
+            <option value="vet">Vet</option>
+            <option value="pet_parent">Pet Parent</option>
+            <option value="unknown">Not sure</option>
+          </select>
+          <select id="epv-cq-filter-status" class="epv-admin-input epv-admin-select">
+            <option value="">Any status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <button id="epv-cq-apply" class="epv-admin-btn epv-admin-btn-secondary">Apply</button>
+        </div>
+        <div class="epv-admin-table-wrap">
+          <table class="epv-admin-table">
+            <colgroup>
+              <col style="width:24%" /><col /><col style="width:90px" />
+              <col style="width:84px" /><col style="width:70px" /><col style="width:150px" /><col style="width:190px" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Question</th><th>Answer</th><th>Audience</th><th>Status</th>
+                <th class="epv-admin-num">Priority</th><th>Updated</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="epv-cq-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div><!-- /view-custom -->
   </div>
 
   <!-- Chat detail drawer -->

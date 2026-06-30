@@ -367,6 +367,202 @@
     loadSummary();
   }
 
+  /* ---------- tabs ---------- */
+  function switchView(view) {
+    var isCustom = view === 'custom';
+    $('epv-admin-view-chats').hidden = isCustom;
+    $('epv-admin-view-custom').hidden = !isCustom;
+    $('epv-tab-chats').classList.toggle('is-active', !isCustom);
+    $('epv-tab-custom').classList.toggle('is-active', isCustom);
+    if (isCustom && !cq.loaded) { cq.loaded = true; loadCustomAnswers(); }
+  }
+
+  /* ---------- custom Q&A ---------- */
+  var cq = { loaded: false, filters: {}, editingId: null, pendingConfirm: false };
+  var CQ_AUDIENCE = { all: 'All', vet: 'Vet', pet_parent: 'Pet Parent', unknown: 'Not sure' };
+  function cqAudienceLabel(a) { return CQ_AUDIENCE[a] || 'All'; }
+
+  function cqShowError(msg) {
+    var e = $('epv-cq-form-error');
+    if (!msg) { e.hidden = true; e.textContent = ''; return; }
+    e.textContent = msg; e.hidden = false;
+  }
+  function cqHideAlert() { var a = $('epv-cq-alert'); a.hidden = true; a.textContent = ''; }
+
+  // Shows a duplicate alert with optional action buttons [{label, cls, fn}].
+  function cqShowAlert(message, isBlock, actions) {
+    var a = $('epv-cq-alert');
+    a.className = 'epv-cq-alert' + (isBlock ? ' is-block' : '');
+    a.textContent = '';
+    a.appendChild(document.createTextNode(message));
+    if (actions && actions.length) {
+      var bar = el('div', 'epv-cq-alert-actions');
+      actions.forEach(function (act) {
+        var b = el('button', 'epv-admin-btn ' + (act.cls || 'epv-admin-btn-ghost'), act.label);
+        b.type = 'button';
+        b.addEventListener('click', act.fn);
+        bar.appendChild(b);
+      });
+      a.appendChild(bar);
+    }
+    a.hidden = false;
+  }
+
+  function cqResetForm() {
+    cq.editingId = null; cq.pendingConfirm = false;
+    $('epv-cq-id').value = '';
+    $('epv-cq-question').value = '';
+    $('epv-cq-answer').value = '';
+    $('epv-cq-audience').value = 'all';
+    $('epv-cq-status').value = 'active';
+    $('epv-cq-priority').value = '100';
+    $('epv-cq-form-title').textContent = 'Add Custom Q&A';
+    $('epv-cq-save').textContent = 'Save';
+    cqHideAlert(); cqShowError('');
+  }
+
+  function cqFillForm(it) {
+    cq.editingId = it.id; cq.pendingConfirm = false;
+    $('epv-cq-id').value = it.id;
+    $('epv-cq-question').value = it.question;
+    $('epv-cq-answer').value = it.answer;
+    $('epv-cq-audience').value = it.audience;
+    $('epv-cq-status').value = it.status;
+    $('epv-cq-priority').value = it.priority;
+    $('epv-cq-form-title').textContent = 'Edit Custom Q&A';
+    $('epv-cq-save').textContent = 'Update';
+    cqHideAlert(); cqShowError('');
+    $('epv-cq-question').focus();
+    $('epv-cq-question').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function cqReadFilters() {
+    return {
+      search: ($('epv-cq-search').value || '').trim(),
+      audience: $('epv-cq-filter-audience').value || '',
+      status: $('epv-cq-filter-status').value || '',
+    };
+  }
+
+  function loadCustomAnswers() {
+    var f = cq.filters;
+    var q = '?limit=200';
+    if (f.search) q += '&search=' + encodeURIComponent(f.search);
+    if (f.audience) q += '&audience=' + encodeURIComponent(f.audience);
+    if (f.status) q += '&status=' + encodeURIComponent(f.status);
+    return api('/custom-answers' + q).then(function (out) {
+      if (!out.ok) return;
+      renderCustomRows(out.data.items || []);
+    });
+  }
+
+  function renderCustomRows(items) {
+    var tb = $('epv-cq-rows'); tb.textContent = '';
+    if (!items.length) {
+      var tr = el('tr'); var td = el('td', 'epv-admin-empty'); td.colSpan = 7;
+      td.textContent = 'No custom answers yet.'; tr.appendChild(td); tb.appendChild(tr); return;
+    }
+    items.forEach(function (it) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'epv-cq-qcell', it.question));
+      tr.appendChild(el('td', 'epv-cq-acell', it.answer));
+      var audTd = el('td'); audTd.appendChild(el('span', 'epv-admin-aud', cqAudienceLabel(it.audience))); tr.appendChild(audTd);
+      var stTd = el('td'); stTd.appendChild(el('span', 'epv-cq-status is-' + it.status, it.status === 'active' ? 'Active' : 'Inactive')); tr.appendChild(stTd);
+      tr.appendChild(el('td', 'epv-admin-num', String(it.priority)));
+      tr.appendChild(el('td', 'epv-admin-when', fmtDate(it.updatedAt)));
+      var actTd = el('td'); var act = el('div', 'epv-cq-act');
+      var edit = el('button', 'epv-admin-btn epv-admin-btn-secondary', 'Edit');
+      edit.addEventListener('click', function () { cqFillForm(it); });
+      var toggle = el('button', 'epv-admin-btn epv-admin-btn-ghost', it.status === 'active' ? 'Deactivate' : 'Activate');
+      toggle.addEventListener('click', function () { cqToggleStatus(it); });
+      var del = el('button', 'epv-admin-btn epv-admin-btn-danger', 'Delete');
+      del.addEventListener('click', function () { cqDelete(it); });
+      act.appendChild(edit); act.appendChild(toggle); act.appendChild(del);
+      actTd.appendChild(act); tr.appendChild(actTd);
+      tb.appendChild(tr);
+    });
+  }
+
+  function cqReadForm() {
+    return {
+      question: ($('epv-cq-question').value || '').trim(),
+      answer: ($('epv-cq-answer').value || '').trim(),
+      audience: $('epv-cq-audience').value || 'all',
+      status: $('epv-cq-status').value || 'active',
+      priority: Number($('epv-cq-priority').value || '100'),
+    };
+  }
+
+  function cqSave(confirmSimilar) {
+    cqShowError(''); cqHideAlert();
+    var body = cqReadForm();
+    if (body.question.length < 3) { cqShowError('Question must be at least 3 characters.'); return; }
+    if (body.answer.length < 3) { cqShowError('Answer must be at least 3 characters.'); return; }
+    if (confirmSimilar) body.confirmSimilarDuplicate = true;
+    var editing = cq.editingId != null && cq.editingId !== '';
+    var path = editing ? '/custom-answers/' + cq.editingId : '/custom-answers';
+    var btn = $('epv-cq-save'); btn.disabled = true;
+    api(path, {
+      method: editing ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(function (out) {
+      btn.disabled = false;
+      if (out.ok) { cqResetForm(); loadCustomAnswers(); return; }
+      var d = out.data || {};
+      if (out.status === 409 && d.error === 'duplicate_question') {
+        cqShowAlert(d.message || 'This question is already added.', true, [
+          d.existing ? { label: 'Edit existing', cls: 'epv-admin-btn-secondary', fn: function () { openExisting(d.existing.id); } } : null,
+          { label: 'Cancel', fn: cqHideAlert },
+        ].filter(Boolean));
+        return;
+      }
+      if (out.status === 409 && d.error === 'similar_question') {
+        var ex = d.existing || {};
+        var msg = 'A similar question already exists' + (ex.question ? ': "' + ex.question + '"' : '') + '. Do you still want to add this as a separate Q&A?';
+        cqShowAlert(msg, false, [
+          { label: 'Add anyway', cls: 'epv-admin-btn-primary', fn: function () { cqHideAlert(); cqSave(true); } },
+          ex.id ? { label: 'Edit existing', cls: 'epv-admin-btn-secondary', fn: function () { openExisting(ex.id); } } : null,
+          { label: 'Cancel', fn: cqHideAlert },
+        ].filter(Boolean));
+        return;
+      }
+      cqShowError(d.message || d.error || 'Could not save.');
+    }).catch(function () { btn.disabled = false; cqShowError('Could not connect.'); });
+  }
+
+  // Loads an existing answer into the form (used by the duplicate alert).
+  function openExisting(id) {
+    api('/custom-answers?limit=200').then(function (out) {
+      if (!out.ok) return;
+      var item = (out.data.items || []).filter(function (x) { return x.id === id; })[0];
+      if (item) cqFillForm(item);
+    });
+  }
+
+  function cqToggleStatus(it) {
+    var next = it.status === 'active' ? 'inactive' : 'active';
+    api('/custom-answers/' + it.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question: it.question, answer: it.answer, audience: it.audience,
+        status: next, priority: it.priority,
+      }),
+    }).then(function (out) {
+      if (out.ok) loadCustomAnswers();
+      else alert((out.data && (out.data.message || out.data.error)) || 'Could not update status.');
+    });
+  }
+
+  function cqDelete(it) {
+    if (!window.confirm('Delete this custom answer?\n\n' + it.question)) return;
+    api('/custom-answers/' + it.id, { method: 'DELETE' }).then(function (out) {
+      if (out.ok) { if (cq.editingId === it.id) cqResetForm(); loadCustomAnswers(); }
+      else alert((out.data && (out.data.message || out.data.error)) || 'Could not delete.');
+    });
+  }
+
   /* ---------- wire up ---------- */
   function init() {
     $('epv-admin-login-form').addEventListener('submit', doLogin);
@@ -381,6 +577,14 @@
     $('epv-admin-next').addEventListener('click', function () { loadChats(state.page + 1); });
     $('epv-admin-drawer').addEventListener('click', function (e) { if (e.target.getAttribute('data-close')) closeDrawer(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
+
+    // Tabs + Custom Q&A
+    $('epv-tab-chats').addEventListener('click', function () { switchView('chats'); });
+    $('epv-tab-custom').addEventListener('click', function () { switchView('custom'); });
+    $('epv-cq-form').addEventListener('submit', function (e) { e.preventDefault(); cqSave(false); });
+    $('epv-cq-cancel').addEventListener('click', function () { cqResetForm(); });
+    $('epv-cq-apply').addEventListener('click', function () { cq.filters = cqReadFilters(); loadCustomAnswers(); });
+    $('epv-cq-search').addEventListener('keydown', function (e) { if (e.key === 'Enter') { cq.filters = cqReadFilters(); loadCustomAnswers(); } });
 
     if (token()) { showApp(); loadAll(); } else { showLogin(); }
     setInterval(autoRefresh, 12000); // live-update the chat list every 12s
