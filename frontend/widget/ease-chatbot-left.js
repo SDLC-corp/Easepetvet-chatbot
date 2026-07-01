@@ -1,9 +1,8 @@
-/* Ease Pet Vet — LEFT intent-based chatbot. A separate, self-contained instance
-   that runs alongside the existing (right) widget on the same page. It starts
-   anonymously (no intro form), detects audience from the conversation, and asks
-   for email/contact only when follow-up intent appears. Reuses the shared
-   epv-chatbot-* styles + the existing backend APIs. Distinct localStorage keys
-   and DOM ids so it never collides with the right widget. */
+/* Ease Pet Vet chatbot — a single, self-contained conversational widget. It starts
+   anonymously (no intro form), detects audience from the conversation, and asks for
+   email/contact only when follow-up intent appears. Styles live in
+   ease-chatbot-left.css (epv-chatbot-* classes); it talks to the backend chat +
+   email APIs. */
 (function () {
   'use strict';
 

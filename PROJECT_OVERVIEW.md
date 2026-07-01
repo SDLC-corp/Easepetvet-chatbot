@@ -194,8 +194,8 @@ Set `CHAT_ANSWER_MODE=retrieval_only` to disable LLMs entirely.
 - **Conversation cap:** `CHAT_CONVERSATION_MESSAGE_LIMIT` (20) questions per
   conversation. The limit-th question is still answered; the next is blocked with
   a friendly message that includes the support email (`CHAT_SUPPORT_EMAIL`).
-- **Lead capture:** the widget intro form posts name/email/phone + audience to
-  `POST /api/chat/lead`, linked to the session.
+- **Lead capture:** conversational — the bot asks for an email/contact in chat and
+  the visitor's reply is saved to the session via `POST /api/chat/email`.
 - **In-chat email prompt:** optionally asks for an email after the first message
   and every N messages (`CHAT_EMAIL_PROMPT_INTERVAL`), unless one is already saved.
 - Each response carries a **usage** object (messages used/remaining, warning
@@ -237,10 +237,8 @@ Set `CHAT_ANSWER_MODE=retrieval_only` to disable LLMs entirely.
   only when follow-up is needed.
 - Floating launcher + chat panel, typewriter rendering, safe linkify, source
   links, usage/limit handling, and conversation reset.
-- Reuses the shared `.epv-chatbot-*` styles from `ease-chatbot-widget.css`, so that
-  stylesheet stays loaded alongside it.
-- `ease-chatbot-widget.js` is retained as a legacy/form-based variant and
-  shared-style reference, but it is **not** loaded in the final demo or production embed.
+- Styles live in `ease-chatbot-left.css` (`.epv-chatbot-*` classes). This is the
+  only chatbot; the old form-based variant has been removed.
 - A `demo.html` page is served for local testing.
 
 **Admin dashboard** (`frontend/admin/`, ~270 lines JS): token login, summary
@@ -281,8 +279,7 @@ Migrations run via `npm run migrate:up` / `migrate:down`.
 | `GET /health` | Liveness |
 | `GET /api/chat/health` | Chat config + active provider chain |
 | `POST /api/chat/message` | Ask a question (returns answer, sources, usage) |
-| `POST /api/chat/lead` | Capture name/email/phone + audience |
-| `POST /api/chat/email` | Attach an email to a session (in-chat prompt) |
+| `POST /api/chat/email` | Attach an email/contact to a session (conversational capture) |
 | `GET /api/admin/summary` | Dashboard stats (token required) |
 | `GET /api/admin/chats` | Paginated/filtered chat list |
 | `GET /api/admin/chats/:sessionId` | Full transcript |

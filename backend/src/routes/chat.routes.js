@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { handleChatMessage, ChatServiceError } from '../chat/chat.service.js';
-import { captureLead, saveSessionEmail } from '../chat/lead.service.js';
+import { saveSessionEmail } from '../chat/lead.service.js';
 import { describeChain } from '../chat/provider-chain.js';
 import { config } from '../config/env.js';
 import { logger } from '../shared/logger/logger.js';
@@ -11,7 +11,6 @@ import { logger } from '../shared/logger/logger.js';
 const router = Router();
 
 const VALID_AUDIENCES = ['pet_parent', 'vet', 'unknown'];
-const MAX_NAME_LENGTH = 120;
 const MAX_EMAIL_LENGTH = 200;
 const MAX_PHONE_LENGTH = 40;
 // Pragmatic email shape check (not full RFC). Rejects obvious garbage; the real
@@ -25,62 +24,6 @@ router.get('/health', (req, res) => {
     answerMode: config.chat.answerMode,
     chain: describeChain(),
   });
-});
-
-router.post('/lead', async (req, res) => {
-  const body = req.body ?? {};
-
-  if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-    return res.status(400).json({ error: 'name is required.' });
-  }
-  const name = body.name.trim();
-  if (name.length > MAX_NAME_LENGTH) {
-    return res.status(400).json({ error: `name must be ${MAX_NAME_LENGTH} characters or fewer.` });
-  }
-
-  if (typeof body.email !== 'string' || body.email.trim().length === 0) {
-    return res.status(400).json({ error: 'email is required.' });
-  }
-  const email = body.email.trim();
-  if (email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)) {
-    return res.status(400).json({ error: 'email must be a valid email address.' });
-  }
-
-  let phone = null;
-  if (body.phone !== undefined && body.phone !== null && body.phone !== '') {
-    if (typeof body.phone !== 'string') {
-      return res.status(400).json({ error: 'phone must be a string.' });
-    }
-    phone = body.phone.trim();
-    if (phone.length > MAX_PHONE_LENGTH) {
-      return res.status(400).json({ error: `phone must be ${MAX_PHONE_LENGTH} characters or fewer.` });
-    }
-  }
-
-  if (typeof body.audience !== 'string' || !VALID_AUDIENCES.includes(body.audience)) {
-    return res.status(400).json({ error: `audience must be one of ${VALID_AUDIENCES.join(', ')}.` });
-  }
-
-  if (body.sessionId !== undefined && body.sessionId !== null && typeof body.sessionId !== 'string') {
-    return res.status(400).json({ error: 'sessionId must be a string.' });
-  }
-
-  try {
-    const result = await captureLead({
-      name,
-      email,
-      phone,
-      audience: body.audience,
-      sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
-    });
-    return res.status(201).json({ ...result, captured: true });
-  } catch (err) {
-    if (err instanceof ChatServiceError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    logger.error({ err }, 'Lead capture failed');
-    return res.status(500).json({ error: 'Internal error saving your details.' });
-  }
 });
 
 router.post('/message', async (req, res) => {
