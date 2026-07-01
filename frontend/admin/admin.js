@@ -415,7 +415,6 @@
     $('epv-cq-answer').value = '';
     $('epv-cq-audience').value = 'all';
     $('epv-cq-status').value = 'active';
-    $('epv-cq-priority').value = '100';
     $('epv-cq-form-title').textContent = 'Add Custom Q&A';
     $('epv-cq-save').textContent = 'Save';
     cqHideAlert(); cqShowError('');
@@ -429,7 +428,6 @@
     $('epv-cq-answer').value = it.answer;
     $('epv-cq-audience').value = it.audience;
     $('epv-cq-status').value = it.status;
-    $('epv-cq-priority').value = it.priority;
     $('epv-cq-form-title').textContent = 'Edit Custom Q&A';
     $('epv-cq-save').textContent = 'Update';
     cqHideAlert(); cqShowError('');
@@ -487,7 +485,7 @@
   function renderCustomRows(items) {
     var tb = $('epv-cq-rows'); tb.textContent = '';
     if (!items.length) {
-      var tr = el('tr'); var td = el('td', 'epv-admin-empty'); td.colSpan = 8;
+      var tr = el('tr'); var td = el('td', 'epv-admin-empty'); td.colSpan = 7;
       td.textContent = 'No custom answers yet.'; tr.appendChild(td); tb.appendChild(tr);
       cqSyncSelectAll(); cqRefreshBulk(); return;
     }
@@ -505,7 +503,6 @@
       tr.appendChild(el('td', 'epv-cq-acell', it.answer));
       var audTd = el('td'); audTd.appendChild(el('span', 'epv-admin-aud', cqAudienceLabel(it.audience))); tr.appendChild(audTd);
       var stTd = el('td'); stTd.appendChild(el('span', 'epv-cq-status is-' + it.status, it.status === 'active' ? 'Active' : 'Inactive')); tr.appendChild(stTd);
-      tr.appendChild(el('td', 'epv-admin-num', String(it.priority)));
       tr.appendChild(el('td', 'epv-admin-when', fmtDate(it.updatedAt)));
       var actTd = el('td'); var act = el('div', 'epv-cq-act');
       var edit = el('button', 'epv-admin-btn epv-admin-btn-secondary', 'Edit');
@@ -527,7 +524,7 @@
       answer: ($('epv-cq-answer').value || '').trim(),
       audience: $('epv-cq-audience').value || 'all',
       status: $('epv-cq-status').value || 'active',
-      priority: Number($('epv-cq-priority').value || '100'),
+      priority: 100, // priority removed from the UI; DB column keeps its default
     };
   }
 
