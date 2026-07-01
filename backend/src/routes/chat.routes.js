@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { handleChatMessage, ChatServiceError } from '../chat/chat.service.js';
-import { saveSessionEmail } from '../chat/lead.service.js';
+import { saveSessionEmail, saveSessionLead } from '../chat/lead.service.js';
 import { describeChain } from '../chat/provider-chain.js';
 import { config } from '../config/env.js';
 import { logger } from '../shared/logger/logger.js';
@@ -11,6 +11,7 @@ import { logger } from '../shared/logger/logger.js';
 const router = Router();
 
 const VALID_AUDIENCES = ['pet_parent', 'vet', 'unknown'];
+const MAX_NAME_LENGTH = 100;
 const MAX_EMAIL_LENGTH = 200;
 const MAX_PHONE_LENGTH = 40;
 // Pragmatic email shape check (not full RFC). Rejects obvious garbage; the real
@@ -105,8 +106,14 @@ router.post('/email', async (req, res) => {
   if (typeof body.audience === 'string' && VALID_AUDIENCES.includes(body.audience)) {
     audience = body.audience;
   }
+  // Optionally forward a name if the widget supplied one alongside the email.
+  let name = null;
+  if (body.name !== undefined && body.name !== null && body.name !== '') {
+    if (typeof body.name !== 'string') return res.status(400).json({ error: 'name must be a string.' });
+    name = body.name.trim().slice(0, MAX_NAME_LENGTH);
+  }
   try {
-    const result = await saveSessionEmail({ sessionId: body.sessionId, email, phone, audience });
+    const result = await saveSessionEmail({ sessionId: body.sessionId, name, email, phone, audience, nameIsDerived: body.nameIsDerived === true });
     return res.status(200).json(result);
   } catch (err) {
     if (err instanceof ChatServiceError) {
@@ -114,6 +121,78 @@ router.post('/email', async (req, res) => {
     }
     logger.error({ err }, 'Save session email failed');
     return res.status(500).json({ error: 'Internal error saving your email.' });
+  }
+});
+
+// General conversational lead capture: any subset of name / email / contactNumber
+// for a session. sessionId is optional (the session is created/resolved).
+router.post('/lead', async (req, res) => {
+  const body = req.body ?? {};
+
+  let name = null;
+  if (body.name !== undefined && body.name !== null && body.name !== '') {
+    if (typeof body.name !== 'string') return res.status(400).json({ error: 'name must be a string.' });
+    name = body.name.trim();
+    if (name.length > MAX_NAME_LENGTH) {
+      return res.status(400).json({ error: `name must be ${MAX_NAME_LENGTH} characters or fewer.` });
+    }
+  }
+
+  let email = null;
+  if (body.email !== undefined && body.email !== null && body.email !== '') {
+    if (typeof body.email !== 'string') return res.status(400).json({ error: 'email must be a string.' });
+    email = body.email.trim();
+    if (email.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: 'email must be a valid email address.' });
+    }
+  }
+
+  const rawPhone = (body.contactNumber !== undefined && body.contactNumber !== null && body.contactNumber !== '')
+    ? body.contactNumber : body.phone;
+  let phone = null;
+  if (rawPhone !== undefined && rawPhone !== null && rawPhone !== '') {
+    if (typeof rawPhone !== 'string') return res.status(400).json({ error: 'contactNumber must be a string.' });
+    phone = rawPhone.trim();
+    if (phone.length > MAX_PHONE_LENGTH) {
+      return res.status(400).json({ error: `contactNumber must be ${MAX_PHONE_LENGTH} characters or fewer.` });
+    }
+  }
+
+  if (!name && !email && !phone) {
+    return res.status(400).json({ error: 'At least one of name, email, or contactNumber is required.' });
+  }
+
+  let audience;
+  if (body.audience !== undefined && body.audience !== null && body.audience !== '') {
+    if (typeof body.audience !== 'string' || !VALID_AUDIENCES.includes(body.audience)) {
+      return res.status(400).json({ error: `audience must be one of ${VALID_AUDIENCES.join(', ')}.` });
+    }
+    audience = body.audience;
+  }
+
+  if (body.sessionId !== undefined && body.sessionId !== null && typeof body.sessionId !== 'string') {
+    return res.status(400).json({ error: 'sessionId must be a string.' });
+  }
+
+  try {
+    const { sessionId } = await saveSessionLead({
+      sessionId: typeof body.sessionId === 'string' && body.sessionId ? body.sessionId : undefined,
+      name, email, phone, audience,
+      nameIsDerived: body.nameIsDerived === true,
+    });
+    return res.status(200).json({
+      sessionId,
+      leadSaved: true,
+      ...(name ? { nameSaved: true } : {}),
+      ...(email ? { emailSaved: true } : {}),
+      ...(phone ? { contactSaved: true } : {}),
+    });
+  } catch (err) {
+    if (err instanceof ChatServiceError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    logger.error({ err }, 'Lead save failed');
+    return res.status(500).json({ error: 'Internal error saving your details.' });
   }
 });
 

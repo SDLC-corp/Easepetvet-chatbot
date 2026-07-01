@@ -29,9 +29,9 @@
   }
   var AUDIENCE_LABELS = { pet_parent: 'Pet Parent', vet: 'Vet', unknown: 'Not sure' };
   function formatAudience(a) { return AUDIENCE_LABELS[a] || 'Not sure'; }
-  // Display-name priority: email -> name -> "Anonymous Visitor".
-  function displayName(email, name) {
-    return (email && email.trim()) || (name && name.trim()) || 'Anonymous Visitor';
+  // Display-name priority: name -> email -> "Anonymous Visitor".
+  function displayName(name, email) {
+    return (name && name.trim()) || (email && email.trim()) || 'Anonymous Visitor';
   }
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -190,7 +190,7 @@
           });
           checkTd.appendChild(cb);
           tr.appendChild(checkTd);
-          tr.appendChild(el('td', 'epv-admin-cell', displayName(it.email, it.name)));
+          tr.appendChild(el('td', 'epv-admin-cell', displayName(it.name, it.email)));
           tr.appendChild(el('td', 'epv-admin-cell', it.email || '—'));
           tr.appendChild(el('td', 'epv-admin-cell', it.phone || '—'));
           var audTd = el('td'); audTd.appendChild(el('span', 'epv-admin-aud', formatAudience(it.audience)));
@@ -338,7 +338,7 @@
         bubble.appendChild(el('div', 'epv-admin-msg-time', fmtDate(m.createdAt)));
         msgs.appendChild(bubble);
       });
-      $('epv-admin-drawer-title').textContent = displayName(lead.email, lead.name) + ' · ' + d.messageCount + ' messages';
+      $('epv-admin-drawer-title').textContent = displayName(lead.name, lead.email) + ' · ' + d.messageCount + ' messages';
       $('epv-admin-drawer').hidden = false;
     });
   }

@@ -14,16 +14,22 @@
   var EMAIL_LINK_MODE = cfg.emailLinkMode || 'mailto';
   var POSITION = cfg.position === 'bottom-right' ? 'bottom-right' : 'bottom-left';
   var SOURCE = 'website_chatbot';
-  // Generic optional-email prompt shown at Q1/Q5/Q10/Q15 (driven by the backend's
-  // usage.showEmailPrompt). Intent-based prompts use audience-specific text.
-  var GENERIC_PROMPT = 'Would you like to share your email? We can use it to follow up, send future updates, or help you if your chat limit is reached.';
-  var SAVE_SUCCESS = 'Thanks — our team can use this to follow up with helpful information.';
   // Short bot replies used when intercepting agreement / repeated confirmations.
-  var ALREADY_HAVE = 'Thanks — we already have your email. Our team can follow up with you using the details you shared.';
+  var SAVE_SUCCESS = 'Thanks — I’ve saved your details. How else can I help?';
+  var ALREADY_HAVE = 'Thanks — we already have your details. Our team can follow up with you.';
   var FOLLOWUP_CONFIRM = 'Thanks — our team can follow up with you using the details you shared.';
   var CLARIFY = 'Could you please tell me what you’d like help with?';
-  var EMAIL_ASK = 'Great — please type your email here and I’ll pass it to our team. You can include a contact number too if you’d prefer a call.';
-  var LOGIN_COPY = 'Would you like to share your email so our team can help if you have trouble accessing the portal? You can also add your contact number if you prefer a call.';
+  var EMAIL_ASK = 'Great — please share your Gmail/email and I’ll pass it to the Ease team. You can include a contact number too if you’d prefer a call.';
+  // Name-first + contact-capture copy.
+  var NAME_SKIP_REPLY = 'No problem. What can I help you with today?';
+  var ASK_CONTACT = 'Thanks. Would you also like to share a contact number in case the team needs to call you? You can skip this if you prefer email only.';
+  var CONTACT_SAVED = 'Thanks — I’ve saved your contact details. How else can I help?';
+  var CONTACT_SKIPPED = 'No problem — we’ll use email only. How else can I help?';
+  // Email-ask copy, chosen by the current lead intent.
+  var EMAIL_ASK_PRICING = 'If you’d like, I can also pass your details to the Ease team for follow-up. What Gmail/email should they use?';
+  var EMAIL_ASK_DEMO = 'Sure — please share your Gmail/email so the Ease team can follow up with the right details.';
+  var EMAIL_ASK_SUPPORT = 'Please share your Gmail/email so the Ease team can follow up about your account or support request.';
+  var EMAIL_ASK_GENERIC = 'If you’d like the Ease team to follow up, what Gmail/email should they use?';
 
   // Separate storage keys so the two widgets never overwrite each other. Some are
   // per-session (suffixed with the session id).
@@ -49,7 +55,11 @@
     } catch (e) { return { leadOfferActive: false, lastLeadIntent: 'general' }; }
   }
   function saveLeadState() {
-    if (sessionId) store(leadStateKey(sessionId), JSON.stringify({ leadOfferActive: leadOfferActive, lastLeadIntent: lastLeadIntent }));
+    if (sessionId) store(leadStateKey(sessionId), JSON.stringify({
+      leadOfferActive: leadOfferActive, lastLeadIntent: lastLeadIntent,
+      leadName: leadName, nameCaptured: nameCaptured, nameSkipped: nameSkipped,
+      emailCaptured: emailCaptured, contactCaptured: contactCaptured, contactSkipped: contactSkipped,
+    }));
   }
 
   // Start a FRESH conversation on every page load. The transcript is not restored
@@ -71,10 +81,13 @@
   })();
   var sessionId = null;
   var audience = 'unknown';
-  var leadSaved = false;
   var dismissedCounts = [];
   var leadOfferActive = false, lastLeadIntent = 'general';
   var greeted = false, convLimit = 20, remaining = null, limitReached = false;
+  // Conversational lead-capture state (name-first -> email -> optional contact).
+  var leadName = null, nameCaptured = false, nameSkipped = false, awaitingName = false;
+  var emailCaptured = false, awaitingContact = false, contactCaptured = false, contactSkipped = false;
+  var leadSavePromise = null; // in-flight /api/chat/lead (resolves the session id)
 
   /* ---------- agreement / conversion detection (left widget only) ---------- */
   // Agreement: the WHOLE message is a short confirmation / acceptance (section A).
@@ -102,18 +115,57 @@
     if (/support|follow ?up|onboarding|partnership|get started|set ?up/i.test(text)) return 'support_offer';
     return 'general';
   }
+  // Email-ask wording, chosen by the current lead intent (J).
   function conversionCopy() {
-    if (lastLeadIntent === 'login_help') return LOGIN_COPY;
-    if (audience === 'vet') return 'Sure — please share your email so our team can follow up with clinic/demo details. You can also add your contact number if you prefer a call.';
-    if (audience === 'pet_parent') return 'Sure — please share your email so our team can follow up with helpful information. You can also add your contact number if you prefer a call.';
-    return 'Sure — please share your email so our team can follow up with the right information. You can also add your contact number if you prefer a call.';
+    if (lastLeadIntent === 'login_help' || lastLeadIntent === 'support_offer') return EMAIL_ASK_SUPPORT;
+    if (lastLeadIntent === 'demo_offer' || lastLeadIntent === 'contact_offer') return EMAIL_ASK_DEMO;
+    if (lastLeadIntent === 'pricing_help') return EMAIL_ASK_PRICING;
+    return EMAIL_ASK_GENERIC;
   }
-  // A soft, natural ask that's appended to a normal answer (woven in, not a popup
-  // or an abrupt standalone message).
-  function wovenEmailAsk() {
-    if (audience === 'vet') return 'By the way, if you’d like our team to follow up with clinic or demo details, just share your email here and I’ll pass it along.';
-    if (audience === 'pet_parent') return 'By the way, if you’d like our team to follow up and help further, feel free to share your email here.';
-    return 'By the way, if you’d like our team to follow up with you, just share your email here and I’ll pass it along.';
+  // Soft ask appended to a normal answer (woven in) at the Q1/Q5/Q10/Q15 cadence.
+  function wovenEmailAsk() { return conversionCopy(); }
+
+  /* ---------- name detection + derived name (frontend, no NLP libs) ---------- */
+  var NAME_INTRO_RE = /\b(?:my name is|i am|i'?m|this is|name'?s|call me)\s+(.+)$/i;
+  var NAME_SKIP_RE = /^(?:skip|no|no thanks?|no thank you|not now|later|maybe later|nah|prefer not|rather not)[.!\s]*$/i;
+  var CONTACT_SKIP_RE = /^(?:skip|no|no thanks?|no thank you|not now|later|nope|nah|email only|prefer email|that'?s ok|that'?s fine)[.!\s]*$/i;
+  var NON_NAME_WORD_RE = /^(pricing|price|cost|demo|support|login|help|account|refund|appointment|booking|book|anxiety|aggression|behaviou?r|yes|ok|okay|hi|hello|hey|thanks|thank|vet|vets|dog|dogs|cat|cats|pet|pets)$/i;
+
+  function isNameSkip(text) { return NAME_SKIP_RE.test(String(text || '').trim()); }
+
+  function isProbablyName(text) {
+    var t = String(text || '').trim();
+    if (!t || t.length > 40) return false;
+    if (QUESTION_RE.test(t) || /[?]/.test(t)) return false;
+    if (EMAIL_FIND_RE.test(t) || PHONE_FIND_RE.test(t)) return false;
+    if (NAME_INTRO_RE.test(t)) return true; // "my name is ...", "i am ...", "this is ..."
+    var words = t.replace(/[.,!]+$/, '').split(/\s+/).filter(Boolean);
+    if (words.length < 1 || words.length > 3) return false;
+    for (var i = 0; i < words.length; i++) {
+      if (!/^[A-Za-z][A-Za-z'.\-]{0,29}$/.test(words[i])) return false;
+      if (NON_NAME_WORD_RE.test(words[i])) return false;
+    }
+    return true;
+  }
+
+  function titleCaseWord(w) { return w ? w.charAt(0).toUpperCase() + w.slice(1) : w; }
+
+  function extractName(text) {
+    var t = String(text || '').trim().replace(/[.!]+$/, '');
+    var m = t.match(NAME_INTRO_RE);
+    if (m) t = m[1].trim();
+    var words = t.split(/\s+/).filter(Boolean).slice(0, 3);
+    return words.map(titleCaseWord).join(' ');
+  }
+
+  // shrinath.kathar@gmail.com -> "Shrinath Kathar"; john123@gmail.com -> "John".
+  function deriveNameFromEmail(email) {
+    var local = String(email || '').split('@')[0] || '';
+    local = local.replace(/[._\-]+/g, ' ').replace(/\d+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!local) return null;
+    var words = local.split(' ').filter(Boolean).slice(0, 3);
+    if (!words.length) return null;
+    return words.map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(); }).join(' ');
   }
 
   var ICONS = {
@@ -199,7 +251,8 @@
 
   function ensureGreeted() {
     if (greeted) return; greeted = true;
-    addBotMessage('Hi! I can help with Ease Pet Vet — pricing, how it works for vets and pet parents, behavior topics, and support. What can I help you with?');
+    awaitingName = true;
+    addBotMessage('Hi! I can help with Ease Pet Vet — pricing, how it works for vets and pet parents, behavior topics, demos, and support. Before we begin, may I know your name?');
   }
 
   /* ---------- usage / limit ---------- */
@@ -218,31 +271,40 @@
     else { inputEl.disabled = false; if (!busy) sendBtn.disabled = false; inputEl.setAttribute('placeholder', 'Type your question...'); }
   }
 
-  /* ---------- conversational email / lead capture (no popup) ---------- */
-  // The bot asks for the email as a normal chat message; the user types it in the
-  // chat and the inline detector (saveInlineLead) captures it. No popup card.
+  /* ---------- conversational name / email / contact capture (no popup) ---------- */
+  // The bot asks for name/email/contact as normal chat messages; the user types
+  // them in the chat and saveLeadInfo() persists them via /api/chat/lead. No form.
   function removePrompt() {} // kept as a no-op (popups removed)
 
-  // The bot's email-ask wording. Count-based (Q1/Q5/Q10/Q15) uses GENERIC_PROMPT;
-  // conversion/agreement asks use the audience-specific conversionCopy().
   function askEmailInChat(textWanted) {
-    if (leadSaved) return;
+    if (emailCaptured) return;
     leadOfferActive = true; saveLeadState();
     addBotMessage(textWanted);
   }
 
-  // Save an email/phone the user typed directly in chat to this session (so the
-  // chat is named by the email in admin) without showing the popup form.
-  function saveInlineLead(email, phone) {
-    var body = { sessionId: sessionId, email: email, audience: audience, widgetSource: SOURCE };
-    if (phone) body.contactNumber = phone;
-    fetch(API_BASE_URL + '/api/chat/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  // General conversational lead save (name and/or email and/or contact number).
+  // Uses POST /api/chat/lead, which creates/resolves the session, so it works even
+  // before a session exists. Stores the returned sessionId and tracks the in-flight
+  // request so the next /message can reuse the same session (no duplicate rows).
+  function saveLeadInfo(info) {
+    var body = { audience: audience, widgetSource: SOURCE };
+    if (sessionId) body.sessionId = sessionId;
+    if (info.name) body.name = info.name;
+    if (info.email) body.email = info.email;
+    if (info.contactNumber) body.contactNumber = info.contactNumber;
+    if (info.nameIsDerived) body.nameIsDerived = true;
+    var p = fetch(API_BASE_URL + '/api/chat/lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
       .then(function (out) {
-        if (out.ok) { leadSaved = true; if (sessionId) store(emailSavedKey(sessionId), '1'); removePrompt(); }
-        else { leadSaved = false; }
+        if (out.ok && out.data && out.data.sessionId) {
+          sessionId = out.data.sessionId; store(SESSION_KEY, sessionId);
+          if (out.data.emailSaved) { emailCaptured = true; store(emailSavedKey(sessionId), '1'); }
+          saveLeadState();
+        }
       })
-      .catch(function () { leadSaved = false; });
+      .catch(function () {});
+    leadSavePromise = p;
+    return p;
   }
 
   /* ---------- chat plumbing (shared style with the right widget) ---------- */
@@ -308,8 +370,12 @@
     }
     sessionId = null; store(SESSION_KEY, '');
     greeted = false; remaining = null; limitReached = false;
-    leadSaved = false; dismissedCounts = [];
+    dismissedCounts = [];
     leadOfferActive = false; lastLeadIntent = 'general';
+    // Reset conversational lead-capture state so the name prompt starts fresh.
+    leadName = null; nameCaptured = false; nameSkipped = false; awaitingName = false;
+    emailCaptured = false; awaitingContact = false; contactCaptured = false; contactSkipped = false;
+    leadSavePromise = null;
     audience = 'unknown'; store(AUDIENCE_KEY, 'unknown');
     updateUsageUI(null); ensureGreeted();
   }
@@ -323,60 +389,100 @@
     var detected = detectAudience(text);
     if (detected) { audience = detected; store(AUDIENCE_KEY, audience); }
 
-    // Inline lead capture (no popup): if the user typed an email (and maybe a
-    // phone) right in the chat, capture it for this session. If the message is
-    // essentially just the email, confirm in chat and skip the AI call.
-    var inlineEmail = (!leadSaved) ? (text.match(EMAIL_FIND_RE) || [null])[0] : null;
-    var inlinePhone = inlineEmail ? (text.match(PHONE_FIND_RE) || [null])[0] : null;
-    if (sessionId && inlineEmail) {
-      var leftover = text.replace(EMAIL_FIND_RE, ' ').replace(PHONE_FIND_RE, ' ').replace(/[^a-z0-9]/gi, ' ').trim();
-      var emailOnly = leftover.split(/\s+/).filter(Boolean).length <= 3 && !QUESTION_RE.test(text);
-      leadSaved = true; // optimistic; persisted on save
-      if (emailOnly) {
+    // ----- Name-first capture (never a hard gate) -----
+    if (awaitingName) {
+      if (isNameSkip(text)) {
         addUserMessage(text);
-        saveInlineLead(inlineEmail, inlinePhone);
-        addBotMessage(SAVE_SUCCESS);
-        if (!limitReached) inputEl.focus();
-        return;
+        awaitingName = false; nameSkipped = true; saveLeadState();
+        addBotMessage(NAME_SKIP_REPLY);
+        if (!limitReached) inputEl.focus(); return;
       }
+      if (isProbablyName(text)) {
+        addUserMessage(text);
+        var nm = extractName(text);
+        awaitingName = false; nameCaptured = true; leadName = nm; saveLeadState();
+        saveLeadInfo({ name: nm });
+        addBotMessage('Thanks, ' + nm + '. What can I help you with today?');
+        if (!limitReached) inputEl.focus(); return;
+      }
+      // A real question instead of a name -> stop asking, answer it normally.
+      awaitingName = false; nameSkipped = true; saveLeadState();
     }
 
-    // Conversational lead capture (no popup): when the user agrees after an offer
-    // or explicitly asks to book/connect, the bot ASKS for the email as a normal
-    // chat message; the user then types it (captured above). Never intercept a
-    // real question or an email-bearing message. Intercepted confirmations are not
-    // sent to the backend, so they don't count toward the 20-question limit.
-    if (sessionId && !inlineEmail && !QUESTION_RE.test(text)) {
+    // ----- Inline email capture (works even before a session exists) -----
+    var inlineEmail = (!emailCaptured) ? (text.match(EMAIL_FIND_RE) || [null])[0] : null;
+    var inlinePhone = inlineEmail ? (text.match(PHONE_FIND_RE) || [null])[0] : null;
+    if (inlineEmail) {
+      var leftover = text.replace(EMAIL_FIND_RE, ' ').replace(PHONE_FIND_RE, ' ').replace(/[^a-z0-9]/gi, ' ').trim();
+      var emailOnly = leftover.split(/\s+/).filter(Boolean).length <= 3 && !QUESTION_RE.test(text);
+      if (emailOnly) {
+        addUserMessage(text);
+        var derived = (!nameCaptured && !leadName) ? deriveNameFromEmail(inlineEmail) : null;
+        if (derived) leadName = derived;
+        emailCaptured = true;
+        saveLeadInfo({ email: inlineEmail, contactNumber: inlinePhone, name: derived, nameIsDerived: !!derived });
+        if (inlinePhone) { contactCaptured = true; saveLeadState(); addBotMessage(SAVE_SUCCESS); }
+        else { awaitingContact = true; saveLeadState(); addBotMessage(ASK_CONTACT); }
+        if (!limitReached) inputEl.focus(); return;
+      }
+      // Email embedded in a longer question -> saved after the answer (below).
+    }
+
+    // ----- Optional contact-number capture (after email) -----
+    if (awaitingContact && !inlineEmail) {
+      var phoneOnly = (text.match(PHONE_FIND_RE) || [null])[0];
+      if (phoneOnly && !QUESTION_RE.test(text)) {
+        addUserMessage(text);
+        contactCaptured = true; awaitingContact = false; saveLeadState();
+        saveLeadInfo({ contactNumber: phoneOnly });
+        addBotMessage(CONTACT_SAVED);
+        if (!limitReached) inputEl.focus(); return;
+      }
+      if (CONTACT_SKIP_RE.test(text)) {
+        addUserMessage(text);
+        contactSkipped = true; awaitingContact = false; saveLeadState();
+        addBotMessage(CONTACT_SKIPPED);
+        if (!limitReached) inputEl.focus(); return;
+      }
+      // Neither a number nor a skip -> stop asking; answer normally.
+      awaitingContact = false; contactSkipped = true; saveLeadState();
+    }
+
+    // ----- Conversion / agreement interception (asks for the email) -----
+    if (!inlineEmail && !QUESTION_RE.test(text)) {
       var conv = CONVERSION_RE.test(text);
       var isLogin = LOGIN_RE.test(text);
       var isAgree = AGREEMENT_RE.test(text);
       var isWant = WANT_RE.test(text) && conv && !isLogin;
 
-      // (1) Explicit "I want to book a demo" style request -> ask for the email.
       if (isWant) {
         addUserMessage(text);
         lastLeadIntent = leadIntentFrom(text);
-        if (leadSaved) addBotMessage(ALREADY_HAVE); else askEmailInChat(conversionCopy());
-        if (!limitReached) inputEl.focus();
-        return;
+        if (emailCaptured) addBotMessage(ALREADY_HAVE); else askEmailInChat(conversionCopy());
+        if (!limitReached) inputEl.focus(); return;
       }
-      // (2) Standalone confirmation ("yes", "ok", "sure", ...) — section A/G.
       if (isAgree) {
         addUserMessage(text);
-        if (leadSaved) {
-          addBotMessage(leadOfferActive ? ALREADY_HAVE : FOLLOWUP_CONFIRM);
-        } else if (leadOfferActive) {
-          addBotMessage(EMAIL_ASK);
-        } else {
-          addBotMessage(CLARIFY);
-        }
-        if (!limitReached) inputEl.focus();
-        return;
+        if (emailCaptured) addBotMessage(leadOfferActive ? ALREADY_HAVE : FOLLOWUP_CONFIRM);
+        else if (leadOfferActive) addBotMessage(EMAIL_ASK);
+        else addBotMessage(CLARIFY);
+        if (!limitReached) inputEl.focus(); return;
       }
     }
 
+    // ----- Normal /message flow -----
     addUserMessage(text); setBusy(true); showTyping();
+    // If a lead save is still creating the session, wait for it so this message
+    // reuses the same session (no duplicate session with the lead detached).
+    if (!sessionId && leadSavePromise) {
+      leadSavePromise.then(function () { sendToBackend(text, inlineEmail, inlinePhone); },
+                           function () { sendToBackend(text, inlineEmail, inlinePhone); });
+    } else {
+      sendToBackend(text, inlineEmail, inlinePhone);
+    }
+  }
 
+  function sendToBackend(text, inlineEmail, inlinePhone) {
     var body = { message: text, audience: audience, widgetSource: SOURCE };
     if (sessionId) body.sessionId = sessionId;
 
@@ -394,18 +500,17 @@
         var userIsLogin = LOGIN_RE.test(text);
 
         // Remember whether this exchange was a lead/conversion offer, so the next
-        // "yes"/"ok" opens the capture form instead of repeating the answer.
+        // "yes"/"ok" opens the email ask instead of repeating the answer.
         leadOfferActive = BOT_ASK_RE.test(rawAnswer) || CONVERSION_RE.test(text) || CONVERSION_RE.test(rawAnswer);
         if (leadOfferActive) {
           lastLeadIntent = leadIntentFrom((CONVERSION_RE.test(text) || userIsLogin) ? text : rawAnswer);
         }
 
-        // Weave the optional email ask into THIS reply instead of a separate abrupt
-        // message. Driven by the backend's showEmailPrompt cadence (Q1/Q5/Q10/Q15 and
-        // when the limit is reached), plus one last nudge right before the final
-        // question — only if no email yet and the answer didn't already ask for one.
-        var botAlreadyAsked = /your email|share your email|email address/i.test(rawAnswer) || BOT_ASK_RE.test(rawAnswer);
-        if (!leadSaved && !botAlreadyAsked && usage) {
+        // Weave the optional email ask into THIS reply on the backend's
+        // showEmailPrompt cadence (Q1/Q5/Q10/Q15 + last question) — only if no email
+        // yet and the answer didn't already ask for one.
+        var botAlreadyAsked = /your email|share your email|email address|gmail/i.test(rawAnswer) || BOT_ASK_RE.test(rawAnswer);
+        if (!emailCaptured && !awaitingContact && !botAlreadyAsked && usage) {
           var used = usage.messagesUsed;
           var beforeLast = (usage.messageLimit || convLimit) - 1;
           if (usage.showEmailPrompt || used === beforeLast) {
@@ -418,8 +523,13 @@
         typeBotMessage(answer);
         updateUsageUI(usage);
 
-        // Persist an email/phone the user typed inline (chat is then named by it).
-        if (inlineEmail && sessionId) saveInlineLead(inlineEmail, inlinePhone);
+        // Persist an email/phone the user typed inside a longer question.
+        if (inlineEmail && !emailCaptured) {
+          var derived2 = (!nameCaptured && !leadName) ? deriveNameFromEmail(inlineEmail) : null;
+          if (derived2) leadName = derived2;
+          emailCaptured = true;
+          saveLeadInfo({ email: inlineEmail, contactNumber: inlinePhone, name: derived2, nameIsDerived: !!derived2 });
+        }
 
         // Login reliability: make sure the login link is offered.
         if (userIsLogin && !/\/login\b/i.test(rawAnswer) && !/login\./i.test(rawAnswer)) {
