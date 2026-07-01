@@ -25,11 +25,6 @@
   var ASK_CONTACT = 'Thanks. Would you also like to share a contact number in case the team needs to call you? You can skip this if you prefer email only.';
   var CONTACT_SAVED = 'Thanks — I’ve saved your contact details. How else can I help?';
   var CONTACT_SKIPPED = 'No problem — we’ll use email only. How else can I help?';
-  // Email-ask copy, chosen by the current lead intent.
-  var EMAIL_ASK_PRICING = 'If you’d like, I can also pass your details to the Ease team for follow-up. What Gmail/email should they use?';
-  var EMAIL_ASK_DEMO = 'Sure — please share your Gmail/email so the Ease team can follow up with the right details.';
-  var EMAIL_ASK_SUPPORT = 'Please share your Gmail/email so the Ease team can follow up about your account or support request.';
-  var EMAIL_ASK_GENERIC = 'If you’d like the Ease team to follow up, what Gmail/email should they use?';
 
   // Separate storage keys so the two widgets never overwrite each other. Some are
   // per-session (suffixed with the session id).
@@ -98,8 +93,6 @@
   // Anchored so it never hijacks a longer real request like "please tell me about
   // pricing" or "ready to hear the details" — those must still be answered.
   var AGREEMENT_RE = /^(?:yes|yeah|yep|yup|ok|okay|k|sure|please|ready|fine|cool|alright|great|hmm+|yes please|i am ready|i'?m ready|go ahead|book it|schedule it|connect me|contact me|call me|send (?:me )?details|share details|i want (?:a )?demo|i want to log\s?in|i want to connect|i want support|sounds good|let'?s do it)[.!\s]*$/i;
-  // Explicit "I want / book / schedule ..." a conversion action (longer phrasing).
-  var WANT_RE = /\b(i\s+want|i'?d\s+like|i\s+would\s+like|book|schedule|sign\s+me\s+up|let'?s\s+do)\b/i;
   // Lead/conversion topics (section A). Extends the follow-up topics.
   var CONVERSION_RE = /\bdemo\b|schedule (a )?demo|consultation|book (a )?call|contact (the )?team|connect (with )?(the )?team|\bsupport\b|follow ?up|login help|portal access|pricing help|clinic onboarding|vet onboarding|partnership|get started|set ?up|referral workflow|detailed assistance|talk to (someone|a person|the team)|speak (to|with)|reach out/i;
   var LOGIN_RE = /log\s?in|sign\s?in|portal/i;
@@ -119,15 +112,19 @@
     if (/support|follow ?up|onboarding|partnership|get started|set ?up/i.test(text)) return 'support_offer';
     return 'general';
   }
-  // Email-ask wording, chosen by the current lead intent (J).
-  function conversionCopy() {
-    if (lastLeadIntent === 'login_help' || lastLeadIntent === 'support_offer') return EMAIL_ASK_SUPPORT;
-    if (lastLeadIntent === 'demo_offer' || lastLeadIntent === 'contact_offer') return EMAIL_ASK_DEMO;
-    if (lastLeadIntent === 'pricing_help') return EMAIL_ASK_PRICING;
-    return EMAIL_ASK_GENERIC;
+  // Soft, natural ask appended to the END of a normal answer (woven in, never a
+  // standalone/abrupt message). Intent- and audience-aware.
+  function wovenEmailAsk() {
+    if (lastLeadIntent === 'demo_offer' || lastLeadIntent === 'contact_offer' || audience === 'vet')
+      return 'By the way, if you’d like our team to follow up with clinic or demo details, just share your email here and I’ll pass it along.';
+    if (lastLeadIntent === 'support_offer' || lastLeadIntent === 'login_help')
+      return 'By the way, if you’d like our team to follow up about your account or support request, just share your email here.';
+    if (lastLeadIntent === 'pricing_help')
+      return 'By the way, if you’d like the Ease team to follow up with pricing details, just share your email here.';
+    if (audience === 'pet_parent')
+      return 'By the way, if you’d like our team to follow up and help further, feel free to share your email here.';
+    return 'By the way, if you’d like the Ease team to follow up, just share your email here and I’ll pass it along.';
   }
-  // Soft ask appended to a normal answer (woven in) at the Q1/Q5/Q10/Q15 cadence.
-  function wovenEmailAsk() { return conversionCopy(); }
 
   /* ---------- name detection + derived name (frontend, no NLP libs) ---------- */
   var NAME_INTRO_RE = /\b(?:my name is|i am|i'?m|this is|name'?s|call me)\s+(.+)$/i;
@@ -293,12 +290,6 @@
   // The bot asks for name/email/contact as normal chat messages; the user types
   // them in the chat and saveLeadInfo() persists them via /api/chat/lead. No form.
   function removePrompt() {} // kept as a no-op (popups removed)
-
-  function askEmailInChat(textWanted) {
-    if (emailCaptured) return;
-    leadOfferActive = true; saveLeadState();
-    addBotMessage(textWanted);
-  }
 
   // General conversational lead save (name and/or email and/or contact number).
   // Uses POST /api/chat/lead, which creates/resolves the session, so it works even
@@ -475,26 +466,15 @@
       awaitingContact = false; contactSkipped = true; saveLeadState();
     }
 
-    // ----- Conversion / agreement interception (asks for the email) -----
-    if (!inlineEmail && !QUESTION_RE.test(text)) {
-      var conv = CONVERSION_RE.test(text);
-      var isLogin = LOGIN_RE.test(text);
-      var isAgree = AGREEMENT_RE.test(text);
-      var isWant = WANT_RE.test(text) && conv && !isLogin;
-
-      if (isWant) {
-        addUserMessage(text);
-        lastLeadIntent = leadIntentFrom(text);
-        if (emailCaptured) addBotMessage(ALREADY_HAVE); else askEmailInChat(conversionCopy());
-        if (!limitReached) inputEl.focus(); return;
-      }
-      if (isAgree) {
-        addUserMessage(text);
-        if (emailCaptured) addBotMessage(leadOfferActive ? ALREADY_HAVE : FOLLOWUP_CONFIRM);
-        else if (leadOfferActive) addBotMessage(EMAIL_ASK);
-        else addBotMessage(CLARIFY);
-        if (!limitReached) inputEl.focus(); return;
-      }
+    // ----- Agreement interception: a bare "yes/ok/sure" reply to an email offer.
+    // (Interest like "I want a demo" is NOT intercepted — it gets a real answer
+    // with the email ask woven softly at the end, in sendToBackend.) -----
+    if (!inlineEmail && !QUESTION_RE.test(text) && AGREEMENT_RE.test(text)) {
+      addUserMessage(text);
+      if (emailCaptured) addBotMessage(leadOfferActive ? ALREADY_HAVE : FOLLOWUP_CONFIRM);
+      else if (leadOfferActive) addBotMessage(EMAIL_ASK);
+      else addBotMessage(CLARIFY);
+      if (!limitReached) inputEl.focus(); return;
     }
 
     // ----- Normal /message flow -----
@@ -533,14 +513,17 @@
           lastLeadIntent = leadIntentFrom((CONVERSION_RE.test(text) || userIsLogin) ? text : rawAnswer);
         }
 
-        // Weave the optional email ask into THIS reply on the backend's
-        // showEmailPrompt cadence (Q1/Q5/Q10/Q15 + last question) — only if no email
-        // yet and the answer didn't already ask for one.
+        // Weave the optional email ask softly onto the END of THIS reply: whenever
+        // the visitor showed lead/demo/contact interest this turn, plus the backend's
+        // showEmailPrompt cadence (Q1/Q5/Q10/Q15) and the last question — only if no
+        // email yet, we're not already collecting contact, and the answer didn't
+        // already ask for one.
         var botAlreadyAsked = /your email|share your email|email address|gmail/i.test(rawAnswer) || BOT_ASK_RE.test(rawAnswer);
+        var convTurn = CONVERSION_RE.test(text) || CONVERSION_RE.test(rawAnswer);
         if (!emailCaptured && !awaitingContact && !botAlreadyAsked && usage) {
           var used = usage.messagesUsed;
           var beforeLast = (usage.messageLimit || convLimit) - 1;
-          if (usage.showEmailPrompt || used === beforeLast) {
+          if (convTurn || usage.showEmailPrompt || used === beforeLast) {
             answer = rawAnswer + '\n\n' + wovenEmailAsk();
             leadOfferActive = true;
           }
