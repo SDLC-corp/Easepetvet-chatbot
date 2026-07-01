@@ -63,22 +63,31 @@ export async function callChatCompletion(provider, shared, question, audience, r
     : '';
   const userContent = `Audience: ${audience}\nQuestion: ${question}\n\n${buildContext(retrieval)}${contactNote}`;
 
+  const body = {
+    model: provider.model,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...priorTurns,
+      { role: 'user', content: userContent },
+    ],
+    temperature: shared.temperature,
+    max_tokens: shared.maxTokens,
+  };
+  // Gemini 2.5 models are "thinking" models: left alone they spend the token
+  // budget on internal reasoning and return truncated or empty answers. Turning
+  // thinking off keeps replies complete and cheap. Only Gemini 2.5 understands
+  // this field, so gate it to avoid unknown-parameter errors on other providers.
+  if (provider.name === 'gemini' && /gemini-2\.5/.test(provider.model)) {
+    body.reasoning_effort = 'none';
+  }
+
   const response = await fetch(`${provider.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${provider.apiKey}`,
     },
-    body: JSON.stringify({
-      model: provider.model,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...priorTurns,
-        { role: 'user', content: userContent },
-      ],
-      temperature: shared.temperature,
-      max_tokens: shared.maxTokens,
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(shared.timeoutMs),
   });
 

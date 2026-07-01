@@ -87,7 +87,9 @@ function loadConfig() {
     gemini: {
       apiKey: process.env.GEMINI_API_KEY ?? '',
       baseUrl: process.env.GEMINI_CHAT_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta/openai',
-      model: process.env.GEMINI_CHAT_MODEL ?? 'gemini-2.0-flash',
+      // gemini-2.5-flash: gemini-2.0-flash lost free-tier quota (returns 429
+      // limit:0), while 2.5-flash still has a free daily allowance.
+      model: process.env.GEMINI_CHAT_MODEL ?? 'gemini-2.5-flash',
     },
     openrouter: {
       apiKey: process.env.OPENROUTER_API_KEY ?? '',
