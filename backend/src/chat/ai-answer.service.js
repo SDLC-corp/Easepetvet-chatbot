@@ -68,19 +68,18 @@ function classifyError(providerName, err) {
 }
 
 export async function buildAnswer(question, audience, retrieval, history = []) {
-  const hasHistory = Array.isArray(history) && history.length > 0;
   const llmEnabled = config.chat.answerMode !== 'retrieval_only';
 
-  // Normal path: retrieval found conversational content.
-  const useChain = llmEnabled && retrieval.found && isConversational(retrieval);
-  // Follow-up path: retrieval found nothing, but we are mid-conversation. Let the
-  // LLM use the prior turns to interpret/acknowledge the reply. Grounding is still
-  // enforced by the system prompt (it must not invent website facts, and may emit
-  // the not-found line). Brand-new (no history) not-found questions never reach
-  // the LLM, so cold-start off-topic/nonsense is still rejected deterministically.
-  const useFollowUp = llmEnabled && !retrieval.found && hasHistory;
+  // AI-first: the model answers EVERY conversational message so it always
+  // understands the question and replies helpfully — grounded strictly on the
+  // provided context for Ease-specific facts, and gracefully redirecting when the
+  // question is off-topic (see the system prompt). Only exact single-value facts
+  // (H1, canonical, og_*, title/meta/url attributes) stay deterministic, since
+  // those need no phrasing. When retrieval found nothing, the context is empty and
+  // the model handles it as an out-of-scope question rather than dead-ending.
+  const useLLM = llmEnabled && (retrieval.found ? isConversational(retrieval) : true);
 
-  if (!useChain && !useFollowUp) {
+  if (!useLLM) {
     return formatRetrievalOnly(retrieval);
   }
 
