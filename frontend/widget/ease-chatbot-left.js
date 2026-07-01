@@ -145,6 +145,10 @@
       if (!/^[A-Za-z][A-Za-z'.\-]{0,29}$/.test(words[i])) return false;
       if (NON_NAME_WORD_RE.test(words[i])) return false;
     }
+    // A single bare word is easily confused with a topic ("grooming", "surgery"),
+    // so require a stronger signal: accept it only when capitalized as typed (or
+    // via a "my name is …" intro, handled above). Multi-word replies may be any case.
+    if (words.length === 1 && !/^[A-Z]/.test(words[0])) return false;
     return true;
   }
 
@@ -287,22 +291,29 @@
   // before a session exists. Stores the returned sessionId and tracks the in-flight
   // request so the next /message can reuse the same session (no duplicate rows).
   function saveLeadInfo(info) {
-    var body = { audience: audience, widgetSource: SOURCE };
-    if (sessionId) body.sessionId = sessionId;
-    if (info.name) body.name = info.name;
-    if (info.email) body.email = info.email;
-    if (info.contactNumber) body.contactNumber = info.contactNumber;
-    if (info.nameIsDerived) body.nameIsDerived = true;
-    var p = fetch(API_BASE_URL + '/api/chat/lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
-      .then(function (out) {
-        if (out.ok && out.data && out.data.sessionId) {
-          sessionId = out.data.sessionId; store(SESSION_KEY, sessionId);
-          if (out.data.emailSaved) { emailCaptured = true; store(emailSavedKey(sessionId), '1'); }
-          saveLeadState();
-        }
-      })
-      .catch(function () {});
+    // Build + POST when it actually runs (not now), so a save chained after an
+    // earlier one picks up the sessionId that earlier save created.
+    var run = function () {
+      var body = { audience: audience, widgetSource: SOURCE };
+      if (sessionId) body.sessionId = sessionId;
+      if (info.name) body.name = info.name;
+      if (info.email) body.email = info.email;
+      if (info.contactNumber) body.contactNumber = info.contactNumber;
+      if (info.nameIsDerived) body.nameIsDerived = true;
+      return fetch(API_BASE_URL + '/api/chat/lead', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+        .then(function (out) {
+          if (out.ok && out.data && out.data.sessionId) {
+            sessionId = out.data.sessionId; store(SESSION_KEY, sessionId);
+            if (out.data.emailSaved) { emailCaptured = true; store(emailSavedKey(sessionId), '1'); }
+            saveLeadState();
+          }
+        })
+        .catch(function () {});
+    };
+    // Chain after any in-flight lead save so a rapid name -> email -> contact all
+    // land on the SAME session (the first save creates it; the rest reuse it).
+    var p = (leadSavePromise || Promise.resolve()).then(run, run);
     leadSavePromise = p;
     return p;
   }
