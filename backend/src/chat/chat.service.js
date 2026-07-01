@@ -122,15 +122,15 @@ export async function handleChatMessage({ message, audience, sessionId, source }
   const retrieval = await retrieve(message, website.id, { history });
   const formatted = await buildAnswer(message, session.audience, retrieval, history);
 
-  // Deterministic safe fallback. When the produced answer is the not-found line
-  // (retrieval found nothing, or a model judged the context insufficient) but the
-  // question is a known Ease topic, replace it with a safe support next step
-  // instead of a dead end. Urgent pet-health intent triggers even when retrieval
-  // found content. This runs AFTER buildAnswer on the single API path, so the AI
-  // can never override a fallback with a plain not-found.
+  // Deterministic safe fallback — only as a SAFETY NET now that the AI answers every
+  // message and gracefully handles off-topic itself. It applies when the produced
+  // answer is the not-found line (e.g. all AI providers were down, so the
+  // deterministic formatter returned not-found) for a known Ease topic. Urgent
+  // pet-health always triggers regardless. It intentionally does NOT fire just
+  // because retrieval found nothing — the AI's conversational/graceful reply stands.
   const norm = retrieval.normalized ?? {};
   const answerIsNotFound = (formatted.answer || '').trim().startsWith(NOT_FOUND_ANSWER);
-  const weak = !retrieval.found || answerIsNotFound;
+  const weak = answerIsNotFound;
   const fallback = getSupportFallback({
     originalQuery: message,
     correctedQuery: norm.correctedQuery,

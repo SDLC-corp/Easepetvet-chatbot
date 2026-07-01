@@ -135,6 +135,24 @@ function debugLogRetrieval(question, websiteId, result) {
   );
 }
 
+// Short acknowledgments / declines / closings ("ok", "no", "got it", "that's all",
+// "ok got my answer") are conversational turns, not new questions. We detect them
+// so retrieval can skip content search — otherwise the context-enriched query pulls
+// unrelated chunks and the model re-answers from them instead of responding to the
+// conversation. Conservative: only very short messages with an ack/closing cue and
+// no question or Ease-topic keyword.
+function isShortConversationalReply(message) {
+  const raw = String(message ?? '').trim();
+  if (!raw || /[?]/.test(raw)) return false;
+  const t = raw.toLowerCase().replace(/[^a-z0-9'\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = t.split(' ').filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  // Don't hijack short real questions/requests about Ease topics.
+  if (/\b(how|what|where|when|which|why|who|price|pricing|cost|demo|contact|login|account|refund|book|appointment|help|behaviou?r|anxiety|aggression|dog|cat|pet|vet|clinic|plan|report|email)\b/.test(t)) return false;
+  // Acknowledgment / decline / closing cues.
+  return /\b(ok|okay|k|no|nope|nah|yes|yeah|yep|yup|sure|thanks|thank|thanx|thx|ty|got|understood|noted|nothing|good|great|cool|fine|alright|awesome|perfect|done|all|bye|goodbye|cya|nvm|nevermind)\b/.test(t);
+}
+
 async function retrieveInternal(question, websiteId, history = []) {
   // Normalize first: fix spelling, detect Ease intents, build an expansion. The
   // corrected query drives detection + matching; the raw question is kept for
@@ -153,6 +171,13 @@ async function retrieveInternal(question, websiteId, history = []) {
   // Greetings / thanks / goodbye: answered instantly, no DB or embedding call.
   if (detection.type === 'smalltalk') {
     return { ...base, smalltalk: detection.smalltalk, found: true, results: [], sources: [] };
+  }
+
+  // Short acknowledgment/decline/closing ("no", "ok got my answer"): return no
+  // results so the answer builder responds from the conversation history instead of
+  // re-answering from unrelated retrieved content.
+  if (isShortConversationalReply(question)) {
+    return { ...base, found: false, results: [], sources: [] };
   }
 
   if (detection.type === 'fact') {
