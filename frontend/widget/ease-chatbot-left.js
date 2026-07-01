@@ -25,6 +25,7 @@
   var ASK_CONTACT = 'Thanks. Would you also like to share a contact number in case the team needs to call you? You can skip this if you prefer email only.';
   var CONTACT_SAVED = 'Thanks — I’ve saved your contact details. How else can I help?';
   var CONTACT_SKIPPED = 'No problem — we’ll use email only. How else can I help?';
+  var DECLINE_ACK = 'No problem — I won’t ask again. How else can I help?';
 
   // Separate storage keys so the two widgets never overwrite each other. Some are
   // per-session (suffixed with the session id).
@@ -58,6 +59,7 @@
       leadOfferActive: leadOfferActive, lastLeadIntent: lastLeadIntent,
       leadName: leadName, nameCaptured: nameCaptured, nameSkipped: nameSkipped,
       emailCaptured: emailCaptured, contactCaptured: contactCaptured, contactSkipped: contactSkipped,
+      leadDeclined: leadDeclined, leadAskCount: leadAskCount,
     }));
   }
 
@@ -86,6 +88,10 @@
   // Conversational lead-capture state (name-first -> email -> optional contact).
   var leadName = null, nameCaptured = false, nameSkipped = false, awaitingName = false;
   var emailCaptured = false, awaitingContact = false, contactCaptured = false, contactSkipped = false;
+  // leadDeclined: user said no to an email ask -> suppress AUTOMATIC/woven asks for
+  // the rest of the session (explicit demo/contact/support requests still may ask).
+  // leadAskCount: number of AUTOMATIC email asks woven so far (capped, wording varies).
+  var leadDeclined = false, leadAskCount = 0;
   var leadSavePromise = null; // in-flight /api/chat/lead (resolves the session id)
 
   /* ---------- agreement / conversion detection (left widget only) ---------- */
@@ -95,6 +101,10 @@
   var AGREEMENT_RE = /^(?:yes|yeah|yep|yup|ok|okay|k|sure|please|ready|fine|cool|alright|great|hmm+|yes please|i am ready|i'?m ready|go ahead|book it|schedule it|connect me|contact me|call me|send (?:me )?details|share details|i want (?:a )?demo|i want to log\s?in|i want to connect|i want support|sounds good|let'?s do it)[.!\s]*$/i;
   // Lead/conversion topics (section A). Extends the follow-up topics.
   var CONVERSION_RE = /\bdemo\b|schedule (a )?demo|consultation|book (a )?call|contact (the )?team|connect (with )?(the )?team|\bsupport\b|follow ?up|login help|portal access|pricing help|clinic onboarding|vet onboarding|partnership|get started|set ?up|referral workflow|detailed assistance|talk to (someone|a person|the team)|speak (to|with)|reach out/i;
+  // Self-standing EXPLICIT follow-up requests. These are a genuine ask (not a bare
+  // "yes/ok"), so they must reach the backend for a real answer AND may ask for an
+  // email even after the user previously declined an automatic ask.
+  var EXPLICIT_LEAD_RE = /\bdemo\b|book (?:a )?call|schedule|(?:have )?your team (?:can )?(?:contact|follow|reach)|contact (?:me|you|us)|connect me|call me|reach out|follow ?up|i want (?:support|someone|a demo|to connect|help)|someone (?:can )?(?:contact|follow|reach)|talk to (?:someone|a person|the team)|speak (?:to|with)|get started|onboard/i;
   var LOGIN_RE = /log\s?in|sign\s?in|portal/i;
   // A genuine question -> let the AI answer it instead of intercepting.
   var QUESTION_RE = /[?]|\b(how|where|what|when|which|why|can i|do i|should i|could you)\b/i;
@@ -103,6 +113,15 @@
   var PHONE_FIND_RE = /\+?\d[\d\s().-]{6,}\d/;
   // The AI answer itself offered a lead step ("Would you like to ... demo/connect/...").
   var BOT_ASK_RE = /would you like[^.?!]*(demo|schedule|book|consult|connect|team|follow ?up|email|log\s?in|portal|get started|set ?up)/i;
+  // Whole-message decline of an email ask ("no", "not now", "later", ...).
+  var EMAIL_DECLINE_RE = /^(?:no|no thanks?|no thank you|not now|not right now|not interested|maybe later|later|nah|nope|no email|don'?t want(?: to share| my email| the email| email)?)[.!\s]*$/i;
+  // Explicit "stop asking" phrasing, allowed anywhere in a longer sentence.
+  var STOP_ASKING_RE = /already said no|i said no|stop asking|don'?t ask (?:me )?again|no need to ask/i;
+  // Remove emails/URLs before intent matching so an answer like "reach out to
+  // support@easepetvet.com" can't be misread as a conversion/follow-up turn.
+  var EMAIL_STRIP_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+  var URL_STRIP_RE = /https?:\/\/[^\s]+|www\.[^\s]+/gi;
+  function stripContacts(s) { return String(s || '').replace(EMAIL_STRIP_RE, ' ').replace(URL_STRIP_RE, ' '); }
 
   function leadIntentFrom(text) {
     if (LOGIN_RE.test(text)) return 'login_help';
@@ -115,15 +134,26 @@
   // Soft, natural ask appended to the END of a normal answer (woven in, never a
   // standalone/abrupt message). Intent- and audience-aware.
   function wovenEmailAsk() {
+    // Second (and later) asks use softer, different wording so it never reads as a
+    // repeated copy-paste line. leadAskCount is still pre-increment here (0 -> first).
+    var i = leadAskCount > 0 ? 1 : 0;
+    var v;
     if (lastLeadIntent === 'demo_offer' || lastLeadIntent === 'contact_offer' || audience === 'vet')
-      return 'By the way, if you’d like our team to follow up with clinic or demo details, just share your email here and I’ll pass it along.';
-    if (lastLeadIntent === 'support_offer' || lastLeadIntent === 'login_help')
-      return 'By the way, if you’d like our team to follow up about your account or support request, just share your email here.';
-    if (lastLeadIntent === 'pricing_help')
-      return 'By the way, if you’d like the Ease team to follow up with pricing details, just share your email here.';
-    if (audience === 'pet_parent')
-      return 'By the way, if you’d like our team to follow up and help further, feel free to share your email here.';
-    return 'By the way, if you’d like the Ease team to follow up, just share your email here and I’ll pass it along.';
+      v = ['By the way, if you’d like our team to follow up with clinic or demo details, just share your email here and I’ll pass it along.',
+           'Whenever you’re ready, drop your email and I’ll have the team reach out with the clinic and demo details.'];
+    else if (lastLeadIntent === 'support_offer' || lastLeadIntent === 'login_help')
+      v = ['By the way, if you’d like our team to follow up about your account or support request, just share your email here.',
+           'Whenever it’s convenient, leave your email and I’ll have support follow up with you.'];
+    else if (lastLeadIntent === 'pricing_help')
+      v = ['By the way, if you’d like the Ease team to follow up with pricing details, just share your email here.',
+           'And if pricing follow-up would help, just drop your email whenever you’re ready.'];
+    else if (audience === 'pet_parent')
+      v = ['By the way, if you’d like our team to follow up and help further, feel free to share your email here.',
+           'Whenever you’re ready, you can leave your email and we’ll follow up to help further.'];
+    else
+      v = ['By the way, if you’d like the Ease team to follow up, just share your email here and I’ll pass it along.',
+           'And whenever you’re ready, just drop your email and I’ll have the team follow up.'];
+    return v[i];
   }
 
   /* ---------- name detection + derived name (frontend, no NLP libs) ---------- */
@@ -190,13 +220,26 @@
 
   /* ---------- intent detection ---------- */
   var VET_RE = /\bvet(s|erinary|erinarian|erinarians)?\b|\bclinic(s)?\b|veterinary team|\bportal\b|(our|my)\s+(clients|patients|practice)|recommend\s+ease|for my clinic|onboarding for vets/i;
-  var PET_RE = /(my|our)\s+(dog|cat|pet|puppy|kitten|animal|dogs|cats|pets)|\bpet\s+(parent|owner)s?\b|separation anxiety|\banxiety\b|\bbehaviou?r\b|\baggression\b|help (with )?my pet|my (dog|cat|pet)/i;
+  var PET_RE = /(my|our)\s+(dog|cat|pet|puppy|kitten|animal|dogs|cats|pets)|\bi\s+have\s+(a\s+)?(dog|cat|pet|puppy|kitten)\b|\bpet\s+(parent|owner)s?\b|separation anxiety|\banxiety\b|\bbehaviou?r\b|\baggression\b|help (with )?my pet|my (dog|cat|pet)/i;
   var FOLLOWUP_RE = /pricing help|partnership|onboarding|consultation|speak (to|with)|\bdemo\b|set ?up|callback|call back|contact|more details|for my clinic|help for my pet|get started|someone (can )?contact|reach out|talk to (someone|a person|the team)|want to use this|use this for my|i want more|contact me/i;
+  // Strong = explicit self-identification. Used to (a) prefer the right audience on
+  // first detection and (b) allow flipping an already-set audience. Weak topic
+  // mentions (e.g. "clinic", "anxiety") never flip a locked audience.
+  var STRONG_VET_RE = /\b(i'?m|i am|we'?re|we are)\s+(a\s+)?(vet|veterinarian|veterinary|dvm)\b|\bas a (vet|veterinarian)\b|\b(my|our)\s+(clinic|practice|hospital)\b|onboard(?:ing)?\s+(?:my|our)\s+(?:clinic|practice)|for (?:my|our) (?:clinic|practice)|\b(?:my|our)\s+(?:patients|clients)\b/i;
+  var STRONG_PET_RE = /\bi(?:'?m| am)\s+a\s+pet\s+(?:parent|owner)\b|\bi\s+have\s+(?:a\s+)?(?:dog|cat|pet|puppy|kitten)\b|\b(?:my|our)\s+(?:dog|cat|pet|puppy|kitten)\b/i;
 
   function detectAudience(text) {
-    if (VET_RE.test(text)) return 'vet';
+    // Prefer explicit self-identification; fall back to general topic signals.
+    if (STRONG_VET_RE.test(text)) return 'vet';
+    if (STRONG_PET_RE.test(text)) return 'pet_parent';
+    if (VET_RE.test(text) && !PET_RE.test(text)) return 'vet';
     if (PET_RE.test(text)) return 'pet_parent';
     return null;
+  }
+  function isStrongAudience(text, aud) {
+    if (aud === 'vet') return STRONG_VET_RE.test(text);
+    if (aud === 'pet_parent') return STRONG_PET_RE.test(text);
+    return false;
   }
   function isFollowup(text) { return FOLLOWUP_RE.test(text); }
 
@@ -391,6 +434,7 @@
     // Reset conversational lead-capture state so the name prompt starts fresh.
     leadName = null; nameCaptured = false; nameSkipped = false; awaitingName = false;
     emailCaptured = false; awaitingContact = false; contactCaptured = false; contactSkipped = false;
+    leadDeclined = false; leadAskCount = 0;
     leadSavePromise = null;
     audience = 'unknown'; store(AUDIENCE_KEY, 'unknown');
     // Preserve the browser-scoped question cap: clearing the chat must NOT reset it.
@@ -403,9 +447,14 @@
     var text = (inputEl.value || '').trim(); if (!text) return;
     inputEl.value = ''; autoGrow();
 
-    // Intent detection (frontend): upgrade audience, never downgrade.
+    // Intent detection (frontend): set audience on the first clear signal; once set,
+    // only flip on a strong/explicit signal for the other audience (never on weak
+    // topic mentions), and never downgrade back to 'unknown'.
     var detected = detectAudience(text);
-    if (detected) { audience = detected; store(AUDIENCE_KEY, audience); }
+    if (detected) {
+      if (audience === 'unknown') { audience = detected; store(AUDIENCE_KEY, audience); }
+      else if (detected !== audience && isStrongAudience(text, detected)) { audience = detected; store(AUDIENCE_KEY, audience); }
+    }
 
     // ----- Name-first capture (never a hard gate) -----
     if (awaitingName) {
@@ -466,10 +515,22 @@
       awaitingContact = false; contactSkipped = true; saveLeadState();
     }
 
+    // ----- Decline interception: "no / not now / stop asking" to an email offer.
+    // Suppress all future AUTOMATIC email asks, acknowledge, and do NOT send to RAG.
+    // (An explicit demo/contact/support request later can still ask — see sendToBackend.)
+    if (!inlineEmail && !emailCaptured && !awaitingContact &&
+        ((leadOfferActive && EMAIL_DECLINE_RE.test(text)) || STOP_ASKING_RE.test(text))) {
+      addUserMessage(text);
+      leadDeclined = true; leadOfferActive = false; saveLeadState();
+      addBotMessage(DECLINE_ACK);
+      if (!limitReached) inputEl.focus(); return;
+    }
+
     // ----- Agreement interception: a bare "yes/ok/sure" reply to an email offer.
-    // (Interest like "I want a demo" is NOT intercepted — it gets a real answer
-    // with the email ask woven softly at the end, in sendToBackend.) -----
-    if (!inlineEmail && !QUESTION_RE.test(text) && AGREEMENT_RE.test(text)) {
+    // Explicit interest like "I want a demo" / "contact me" is NOT intercepted — it
+    // falls through to the backend for a real answer with the email ask woven at the
+    // end (the explicit-intent path in sendToBackend). -----
+    if (!inlineEmail && !QUESTION_RE.test(text) && AGREEMENT_RE.test(text) && !EXPLICIT_LEAD_RE.test(text)) {
       addUserMessage(text);
       if (emailCaptured) addBotMessage(leadOfferActive ? ALREADY_HAVE : FOLLOWUP_CONFIRM);
       else if (leadOfferActive) addBotMessage(EMAIL_ASK);
@@ -506,26 +567,36 @@
         var usage = out.data.usage;
         var userIsLogin = LOGIN_RE.test(text);
 
-        // Remember whether this exchange was a lead/conversion offer, so the next
-        // "yes"/"ok" opens the email ask instead of repeating the answer.
-        leadOfferActive = BOT_ASK_RE.test(rawAnswer) || CONVERSION_RE.test(text) || CONVERSION_RE.test(rawAnswer);
-        if (leadOfferActive) {
-          lastLeadIntent = leadIntentFrom((CONVERSION_RE.test(text) || userIsLogin) ? text : rawAnswer);
-        }
+        // Whether the USER explicitly asked for follow-up this turn (their own words,
+        // with any emails/URLs stripped so an answer's "support@..." can't leak in).
+        // The bot's answer text is NOT used to detect conversion intent anymore.
+        var cleanUserText = stripContacts(text);
+        var explicitIntent = CONVERSION_RE.test(cleanUserText) || EXPLICIT_LEAD_RE.test(cleanUserText);
+        var botOffered = BOT_ASK_RE.test(rawAnswer);
+        // Remember whether an offer is on the table, so a following "yes"/"ok" opens
+        // the email ask, and track the intent purely for the ask's wording.
+        leadOfferActive = botOffered;
+        if (botOffered) lastLeadIntent = leadIntentFrom(rawAnswer);
+        else if (explicitIntent || userIsLogin) lastLeadIntent = leadIntentFrom(userIsLogin ? text : cleanUserText);
 
-        // Weave the optional email ask softly onto the END of THIS reply: whenever
-        // the visitor showed lead/demo/contact interest this turn, plus the backend's
-        // showEmailPrompt cadence (Q1/Q5/Q10/Q15) and the last question — only if no
-        // email yet, we're not already collecting contact, and the answer didn't
-        // already ask for one.
-        var botAlreadyAsked = /your email|share your email|email address|gmail/i.test(rawAnswer) || BOT_ASK_RE.test(rawAnswer);
-        var convTurn = CONVERSION_RE.test(text) || CONVERSION_RE.test(rawAnswer);
+        // Weave the optional email ask softly onto the END of THIS reply — never if
+        // we already have an email, are collecting contact, or the answer itself asked.
+        // Two paths:
+        //   - explicit user request (demo/contact/support): always allowed, even after
+        //     a prior "no", and not limited by the automatic cap.
+        //   - automatic cadence (showEmailPrompt Q1/Q5/Q10/Q15, or the last question):
+        //     suppressed after a decline and capped at 2 asks, with varied wording.
+        var botAlreadyAsked = /your email|share your email|email address|gmail/i.test(rawAnswer) || botOffered;
         if (!emailCaptured && !awaitingContact && !botAlreadyAsked && usage) {
           var used = usage.messagesUsed;
           var beforeLast = (usage.messageLimit || convLimit) - 1;
-          if (convTurn || usage.showEmailPrompt || used === beforeLast) {
+          var autoTrigger = usage.showEmailPrompt || used === beforeLast;
+          if (explicitIntent) {
             answer = rawAnswer + '\n\n' + wovenEmailAsk();
-            leadOfferActive = true;
+            leadOfferActive = true; leadAskCount++;
+          } else if (!leadDeclined && leadAskCount < 2 && autoTrigger) {
+            answer = rawAnswer + '\n\n' + wovenEmailAsk();
+            leadOfferActive = true; leadAskCount++;
           }
         }
         saveLeadState();
