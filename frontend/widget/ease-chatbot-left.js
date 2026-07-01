@@ -401,14 +401,15 @@
           lastLeadIntent = leadIntentFrom((CONVERSION_RE.test(text) || userIsLogin) ? text : rawAnswer);
         }
 
-        // Weave the optional email ask into THIS reply (after ~5 questions, and again
-        // right before the last one) instead of sending a separate abrupt message —
-        // only if no email yet and the answer didn't already ask for one.
+        // Weave the optional email ask into THIS reply instead of a separate abrupt
+        // message. Driven by the backend's showEmailPrompt cadence (Q1/Q5/Q10/Q15 and
+        // when the limit is reached), plus one last nudge right before the final
+        // question — only if no email yet and the answer didn't already ask for one.
         var botAlreadyAsked = /your email|share your email|email address/i.test(rawAnswer) || BOT_ASK_RE.test(rawAnswer);
         if (!leadSaved && !botAlreadyAsked && usage) {
           var used = usage.messagesUsed;
           var beforeLast = (usage.messageLimit || convLimit) - 1;
-          if (used === 5 || used === beforeLast) {
+          if (usage.showEmailPrompt || used === beforeLast) {
             answer = rawAnswer + '\n\n' + wovenEmailAsk();
             leadOfferActive = true;
           }
