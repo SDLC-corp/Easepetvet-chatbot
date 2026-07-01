@@ -14,7 +14,7 @@
   var WEBSITE_BASE_URL = (cfg.websiteBaseUrl || 'https://easepetvet.com').replace(/\/+$/, '');
   var EMAIL_LINK_MODE = cfg.emailLinkMode || 'mailto';
   var POSITION = cfg.position === 'bottom-right' ? 'bottom-right' : 'bottom-left';
-  var SOURCE = 'left_intent_chatbot';
+  var SOURCE = 'website_chatbot';
   // Generic optional-email prompt shown at Q1/Q5/Q10/Q15 (driven by the backend's
   // usage.showEmailPrompt). Intent-based prompts use audience-specific text.
   var GENERIC_PROMPT = 'Would you like to share your email? We can use it to follow up, send future updates, or help you if your chat limit is reached.';

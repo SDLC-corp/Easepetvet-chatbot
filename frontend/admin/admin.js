@@ -318,12 +318,10 @@
       var leadBox = $('epv-admin-drawer-lead');
       leadBox.textContent = '';
       var lead = d.lead || {};
-      var src = null;
-      (d.messages || []).forEach(function (m) { if (m.metadata && m.metadata.source) src = m.metadata.source; });
-      var srcLabel = src === 'left_intent_chatbot' ? 'Left (intent-based)' : (src ? src : 'Main widget');
+      // Single chatbot now (no left/right), so the source is always the site chatbot.
       [['Name', lead.name], ['Email', lead.email], ['Contact', lead.phone],
        ['Audience', formatAudience(d.session.audience)],
-       ['Source', srcLabel],
+       ['Source', 'Website chatbot'],
        ['Started', fmtDate(d.session.createdAt)]].forEach(function (p) {
         var line = el('div');
         line.appendChild(el('b', null, p[0] + ': '));
