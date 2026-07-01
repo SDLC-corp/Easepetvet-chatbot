@@ -35,6 +35,10 @@
   // per-session (suffixed with the session id).
   var SESSION_KEY = 'epv_left_chatbot_session_id';
   var AUDIENCE_KEY = 'epv_left_chatbot_audience';
+  // Browser-scoped (NOT per-session): once the question limit is hit, it stays hit
+  // across clear-chat and reload so deleting the chat can't reset the cap.
+  var LIMIT_KEY = 'epv_left_chatbot_limit_reached';
+  var LIMIT_NOTICE = 'You’ve reached the question limit for this conversation. Clearing the chat won’t add more questions — please reach out to the Ease team if you need more help.';
   function emailSavedKey(sid) { return 'epv_left_chatbot_email_saved_' + sid; }
   function dismissedKey(sid) { return 'epv_left_chatbot_email_prompt_dismissed_counts_' + sid; }
   function remainingKey(sid) { return 'epv_left_chatbot_remaining_' + sid; }
@@ -249,14 +253,23 @@
     document.body.appendChild(root);
 
     if (sessionId) { var r = load(remainingKey(sessionId)); if (r != null && r !== '') remaining = Number(r); }
+    if (load(LIMIT_KEY) === '1') limitReached = true; // stay capped across reloads
     updateUsageUI(null);
-    ensureGreeted();
+    greetOrLimit();
   }
 
   function ensureGreeted() {
     if (greeted) return; greeted = true;
     awaitingName = true;
     addBotMessage('Hi! I can help with Ease Pet Vet — pricing, how it works for vets and pet parents, behavior topics, demos, and support. Before we begin, may I know your name?');
+  }
+
+  // Greet normally, or — if the browser already hit the question cap — show the
+  // limit notice instead (the input stays disabled via applyLimitBlock). Used on
+  // build and after clear-chat so the cap can't be reset by deleting the chat.
+  function greetOrLimit() {
+    if (limitReached) { greeted = true; awaitingName = false; addBotMessage(LIMIT_NOTICE); }
+    else ensureGreeted();
   }
 
   /* ---------- usage / limit ---------- */
@@ -266,6 +279,7 @@
       if (typeof usage.remainingMessages === 'number') remaining = usage.remainingMessages;
       limitReached = !!usage.limitReached || (remaining != null && remaining <= 0);
       if (sessionId && remaining != null) store(remainingKey(sessionId), String(remaining));
+      if (limitReached) store(LIMIT_KEY, '1'); // remember across clear + reload
     }
     renderRemaining(); applyLimitBlock();
   }
@@ -388,7 +402,9 @@
     emailCaptured = false; awaitingContact = false; contactCaptured = false; contactSkipped = false;
     leadSavePromise = null;
     audience = 'unknown'; store(AUDIENCE_KEY, 'unknown');
-    updateUsageUI(null); ensureGreeted();
+    // Preserve the browser-scoped question cap: clearing the chat must NOT reset it.
+    limitReached = (load(LIMIT_KEY) === '1');
+    updateUsageUI(null); greetOrLimit();
   }
 
   function send() {
