@@ -67,7 +67,11 @@ export function createApp() {
       etag: config.nodeEnv === 'production',
       lastModified: config.nodeEnv === 'production',
       setHeaders: (res) => {
-        if (config.nodeEnv !== 'production') res.setHeader('Cache-Control', 'no-store');
+        // Always revalidate in production: with the ETag on, an unchanged file is a
+        // cheap 304, but a deployed widget/admin update reaches every visitor on
+        // their next load instead of sitting behind a stale browser cache. Dev uses
+        // no-store so local edits always show immediately.
+        res.setHeader('Cache-Control', config.nodeEnv === 'production' ? 'no-cache' : 'no-store');
       },
     }),
   );
@@ -79,7 +83,11 @@ export function createApp() {
       etag: config.nodeEnv === 'production',
       lastModified: config.nodeEnv === 'production',
       setHeaders: (res) => {
-        if (config.nodeEnv !== 'production') res.setHeader('Cache-Control', 'no-store');
+        // Always revalidate in production: with the ETag on, an unchanged file is a
+        // cheap 304, but a deployed widget/admin update reaches every visitor on
+        // their next load instead of sitting behind a stale browser cache. Dev uses
+        // no-store so local edits always show immediately.
+        res.setHeader('Cache-Control', config.nodeEnv === 'production' ? 'no-cache' : 'no-store');
       },
     }),
   );
