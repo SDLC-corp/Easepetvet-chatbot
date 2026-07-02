@@ -176,16 +176,14 @@
     if (QUESTION_RE.test(t) || /[?]/.test(t)) return false;
     if (EMAIL_FIND_RE.test(t) || PHONE_FIND_RE.test(t)) return false;
     if (NAME_INTRO_RE.test(t)) return true; // "my name is ...", "i am ...", "this is ..."
-    var words = t.replace(/[.,!]+$/, '').split(/\s+/).filter(Boolean);
-    if (words.length < 1 || words.length > 3) return false;
-    for (var i = 0; i < words.length; i++) {
-      if (!/^[A-Za-z][A-Za-z'.\-]{0,29}$/.test(words[i])) return false;
-      if (NON_NAME_WORD_RE.test(words[i])) return false;
-    }
-    // A single bare word is easily confused with a topic ("grooming", "surgery"),
-    // so require a stronger signal: accept it only when capitalized as typed (or
-    // via a "my name is …" intro, handled above). Multi-word replies may be any case.
-    if (words.length === 1 && !/^[A-Z]/.test(words[0])) return false;
+    // Bare reply (no "my name is …"): treat it as a name ONLY when it is a single
+    // word of at most 12 characters. Anything with a space (e.g. "I LIKE IT") or
+    // longer than 12 chars is a normal message, not a name.
+    var word = t.replace(/[.,!]+$/, '');
+    if (/\s/.test(word)) return false;                       // must be one word
+    if (word.length < 1 || word.length > 12) return false;   // 12-character cap
+    if (!/^[A-Za-z][A-Za-z'’.\-]*$/.test(word)) return false; // letters only
+    if (NON_NAME_WORD_RE.test(word)) return false;           // not a greeting/topic
     return true;
   }
 
