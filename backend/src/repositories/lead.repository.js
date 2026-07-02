@@ -24,8 +24,9 @@ export async function getSessionEmail(sessionRowId) {
 //  - email / phone are updated when provided, otherwise the existing value stays
 //    (COALESCE), so a later email save doesn't wipe an earlier phone and vice versa;
 //  - audience is upgraded (never downgraded to 'unknown').
-// Email + phone are encrypted at rest; a keyed email hash powers exact search.
+// Name, email + phone are encrypted at rest; a keyed email hash powers exact search.
 export async function upsertSessionLead({ websiteId, sessionRowId, name, email, phone, audience, nameIsDerived }) {
+  const encName = name ? encryptField(name) : null;
   const encEmail = email ? encryptField(email) : null;
   const emlHash = email ? emailHash(email) : null;
   const encPhone = phone ? encryptField(phone) : null;
@@ -45,6 +46,6 @@ export async function upsertSessionLead({ websiteId, sessionRowId, name, email, 
        audience = CASE WHEN $7 <> 'unknown' THEN $7 ELSE chat_leads.audience END,
        website_id = EXCLUDED.website_id,
        updated_at = now()`,
-    [websiteId ?? null, sessionRowId ?? null, name ?? null, encEmail, emlHash, encPhone, audience || 'unknown', derived],
+    [websiteId ?? null, sessionRowId ?? null, encName, encEmail, emlHash, encPhone, audience || 'unknown', derived],
   );
 }

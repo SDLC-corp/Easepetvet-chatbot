@@ -7,6 +7,14 @@ import { decryptField, emailHash, encryptionEnabled } from '../shared/crypto/fie
 
 const PREVIEW_LEN = 140;
 
+// Decrypts a stored message and truncates it to a short preview. Used because the
+// content column is encrypted, so SQL left()/ILIKE can't operate on it directly.
+function previewOf(stored) {
+  const text = decryptField(stored);
+  if (text == null) return null;
+  return text.length > PREVIEW_LEN ? text.slice(0, PREVIEW_LEN) : text;
+}
+
 export async function getSummary(websiteId) {
   const { rows } = await pool.query(
     `SELECT
@@ -56,21 +64,26 @@ function buildChatFilters({ search, audience, dateFrom, dateTo }) {
     clauses.push(`s.created_at <= $${params.length}`);
   }
   if (search) {
-    params.push(`%${search}%`);
-    const like = `$${params.length}`;
-    // name + message stay plaintext (searchable). Email/phone are encrypted, so
-    // search email by its keyed hash (exact match) when encryption is on; in
-    // plaintext mode fall back to ILIKE on email/phone.
-    const parts = [
-      `l.name ILIKE ${like}`,
-      `EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = s.id AND m.content ILIKE ${like})`,
-    ];
+    const parts = [];
     if (encryptionEnabled()) {
+      // Name, message content, email and phone are all encrypted at rest, so free-
+      // text SQL search inside them is impossible. Search email by its keyed hash
+      // (exact match); a non-email term simply matches nothing.
       const h = emailHash(search.trim());
       if (h) { params.push(h); parts.push(`l.email_hash = $${params.length}`); }
     } else {
-      parts.push(`l.email ILIKE ${like}`, `l.phone ILIKE ${like}`);
+      // Plaintext (dev / no key) mode: fall back to ILIKE across name/message/email/phone.
+      params.push(`%${search}%`);
+      const like = `$${params.length}`;
+      parts.push(
+        `l.name ILIKE ${like}`,
+        `EXISTS (SELECT 1 FROM chat_messages m WHERE m.session_id = s.id AND m.content ILIKE ${like})`,
+        `l.email ILIKE ${like}`,
+        `l.phone ILIKE ${like}`,
+      );
     }
+    // If nothing is searchable (encrypted mode + non-email term), match no rows.
+    if (parts.length === 0) parts.push('false');
     clauses.push(`(${parts.join(' OR ')})`);
   }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -98,14 +111,14 @@ export async function listChats({ page = 1, limit = 20, search, audience, dateFr
     `SELECT s.session_id, s.audience, s.created_at, s.updated_at,
             l.name, l.email, l.phone,
             mc.message_count,
-            lm.last_message_at, lm.last_message_preview
+            lm.last_message_at, lm.last_message_content
      FROM chat_sessions s
      LEFT JOIN chat_leads l ON l.session_id = s.id
      LEFT JOIN LATERAL (
        SELECT count(*)::int AS message_count FROM chat_messages m WHERE m.session_id = s.id
      ) mc ON true
      LEFT JOIN LATERAL (
-       SELECT m.created_at AS last_message_at, left(m.content, ${PREVIEW_LEN}) AS last_message_preview
+       SELECT m.created_at AS last_message_at, m.content AS last_message_content
        FROM chat_messages m WHERE m.session_id = s.id
        ORDER BY m.created_at DESC LIMIT 1
      ) lm ON true
@@ -117,14 +130,14 @@ export async function listChats({ page = 1, limit = 20, search, audience, dateFr
 
   const items = rows.map((row) => ({
     sessionId: row.session_id,
-    name: row.name ?? null,
+    name: decryptField(row.name) ?? null,
     email: decryptField(row.email) ?? null,
     phone: decryptField(row.phone) ?? null,
     audience: row.audience,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastMessageAt: row.last_message_at ?? null,
-    lastMessagePreview: row.last_message_preview ?? null,
+    lastMessagePreview: previewOf(row.last_message_content),
     messageCount: row.message_count ?? 0,
   }));
 
@@ -175,7 +188,7 @@ export async function exportChats(sessionTokens) {
   );
   return rows.map((row) => ({
     sessionId: row.session_id,
-    name: row.name ?? null,
+    name: decryptField(row.name) ?? null,
     email: decryptField(row.email) ?? null,
     phone: decryptField(row.phone) ?? null,
     audience: row.audience,
@@ -225,7 +238,7 @@ export async function getChatDetail(sessionToken) {
 
   const lead = leadRes.rows[0]
     ? {
-        name: leadRes.rows[0].name,
+        name: decryptField(leadRes.rows[0].name),
         email: decryptField(leadRes.rows[0].email),
         phone: decryptField(leadRes.rows[0].phone),
         audience: leadRes.rows[0].audience,
@@ -243,7 +256,7 @@ export async function getChatDetail(sessionToken) {
     lead,
     messages: msgRes.rows.map((m) => ({
       role: m.role,
-      content: m.content,
+      content: decryptField(m.content),
       createdAt: m.created_at,
       metadata: safeMetadata(m.metadata),
     })),

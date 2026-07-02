@@ -58,7 +58,7 @@ function isVetContext(lower) {
 // real question like "thanks, what's the price?" is NOT treated as small-talk.
 function detectSmallTalk(lower) {
   const t = lower.trim();
-  if (/^(hi|hello|hey|hiya|howdy|yo|namaste|greetings)[\s!.,]*$/.test(t)) return 'greeting';
+  if (/^(hi|hello|hey|hiya|howdy|yo|namaste|greetings|hellosir)[\s!.,]*$/.test(t)) return 'greeting';
   if (/^good\s+(morning|afternoon|evening|day)[\s!.,]*$/.test(t)) return 'greeting';
   if (/^(thanks|thank you|thank u|thankyou|thx|ty)[\s!.,]*$/.test(t)) return 'thanks';
   if (/^(bye|goodbye|good bye|see you|see ya|cya|take care)[\s!.,]*$/.test(t)) return 'goodbye';

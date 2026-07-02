@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../db/pool.js';
+import { encryptField, decryptField } from '../shared/crypto/field-crypto.js';
 
 // SQL for chat sessions and messages. The public session token lives on
 // chat_sessions.session_id (TEXT); messages link via the existing BIGINT
@@ -42,9 +43,11 @@ export async function resolveOrCreateSession(publicId, audience) {
 }
 
 export async function insertMessage(sessionRowId, role, content, metadata = {}) {
+  // Message content is confidential -> encrypted at rest (decrypted on read in
+  // getRecentMessages and the admin repository).
   await pool.query(
     'INSERT INTO chat_messages (session_id, role, content, metadata) VALUES ($1, $2, $3, $4::jsonb)',
-    [sessionRowId, role, content, JSON.stringify(metadata)],
+    [sessionRowId, role, encryptField(content), JSON.stringify(metadata)],
   );
 }
 
@@ -62,7 +65,8 @@ export async function getRecentMessages(sessionRowId, limit) {
        LIMIT $2`,
     [sessionRowId, capped],
   );
-  return rows.reverse();
+  // Decrypt content back to plaintext for use as conversation memory.
+  return rows.reverse().map((r) => ({ role: r.role, content: decryptField(r.content) }));
 }
 
 // Counts accepted user questions in a session (role='user' only). Bot replies,

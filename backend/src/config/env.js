@@ -190,6 +190,19 @@ function loadConfig() {
     errors.push(`CHAT timeout must be an integer > 0 (received "${chatTimeoutMs}")`);
   }
 
+  // Security: lead PII (email/phone/name) and chat message content are encrypted
+  // at rest with DATA_ENCRYPTION_KEY. In production the key is mandatory so nothing
+  // is ever written in plaintext (fail-closed). In dev a missing key is allowed but
+  // loudly warned about, since encryption silently becomes a no-op without it.
+  if (!isNonEmptyString(process.env.DATA_ENCRYPTION_KEY)) {
+    if (nodeEnv === 'production') {
+      errors.push('DATA_ENCRYPTION_KEY is required in production: it encrypts lead PII and chat history at rest.');
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn('[config] DATA_ENCRYPTION_KEY is not set — lead PII and chat history will be stored UNENCRYPTED. Set it to enable at-rest encryption.');
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid environment configuration:\n- ${errors.join('\n- ')}`);
   }
