@@ -14,6 +14,12 @@
   var EMAIL_LINK_MODE = cfg.emailLinkMode || 'mailto';
   var POSITION = cfg.position === 'bottom-right' ? 'bottom-right' : 'bottom-left';
   var SOURCE = 'website_chatbot';
+  // Per-message length caps. These fallbacks match the backend defaults; the real
+  // values are fetched from /api/chat/health on load (fetchLimits) so the widget
+  // stays in sync with the server's CHAT_MAX_MESSAGE_CHARS / _WORDS env vars.
+  var MAX_CHARS = 800, MAX_WORDS = 120;
+  var FOOTER_TEXT = 'Answers come from the Ease Pet Vet website.';
+  var TOO_LONG_TEXT = 'Message is too long.'; // generic; never reveals the numbers
   // Short bot replies used when intercepting agreement / repeated confirmations.
   var SAVE_SUCCESS = 'Thanks — I’ve saved your details. How else can I help?';
   var ALREADY_HAVE = 'Thanks — we already have your details. Our team can follow up with you.';
@@ -213,7 +219,7 @@
     easeFull: '<svg viewBox="0 0 250 72" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ease"><defs><mask id="epvLeftEaseFullCut"><rect width="72" height="72" fill="#fff"/><circle cx="46" cy="36" r="20.5" fill="#000"/></mask></defs><circle cx="33" cy="36" r="30" fill="#1AB5AC" mask="url(#epvLeftEaseFullCut)"/><path d="M34 51 C27 44.5 17.5 39.5 17.5 31.5 C17.5 25.5 24 23 28.7 26 C31.2 27.6 33 30.4 34 32.8 C35 30.4 36.8 27.6 39.3 26 C44 23 50.5 25.5 50.5 31.5 C50.5 39.5 41 44.5 34 51 Z" fill="#0E8C84"/><path d="M26.5 34.5 L33.5 42.5 L54 17" fill="none" stroke="#0E8C84" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/><text x="80" y="53" font-family="Poppins, Nunito, Quicksand, \'Segoe UI\', system-ui, Arial, sans-serif" font-size="56" font-weight="700" letter-spacing="-2" fill="#333333">ease</text></svg>',
   };
 
-  var root, panel, messagesEl, inputEl, sendBtn, launcherBtn, composerEl, remainingEl, warningEl;
+  var root, panel, messagesEl, inputEl, sendBtn, launcherBtn, composerEl, remainingEl, warningEl, footerEl;
   var isOpen = false, busy = false, typeTimer = null;
 
   function el(tag, cls, html) { var n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
@@ -279,7 +285,9 @@
     composerEl = el('div', 'epv-chatbot-composer');
     inputEl = el('textarea', 'epv-chatbot-input'); inputEl.setAttribute('rows', '1');
     inputEl.setAttribute('placeholder', 'Type your question...'); inputEl.setAttribute('aria-label', 'Message');
-    inputEl.addEventListener('input', autoGrow); inputEl.addEventListener('keydown', onKeyDown);
+    inputEl.setAttribute('maxlength', String(MAX_CHARS)); // native hard-cap on characters
+    inputEl.addEventListener('input', autoGrow); inputEl.addEventListener('input', enforceLimit);
+    inputEl.addEventListener('keydown', onKeyDown);
     sendBtn = el('button', 'epv-chatbot-send', ICONS.send); sendBtn.setAttribute('aria-label', 'Send message');
     sendBtn.addEventListener('click', send);
     composerEl.appendChild(inputEl); composerEl.appendChild(sendBtn);
@@ -287,7 +295,8 @@
 
     // Question counter intentionally hidden; the 20-message limit is still enforced
     // silently via applyLimitBlock().
-    panel.appendChild(el('div', 'epv-chatbot-footer', 'Answers come from the Ease Pet Vet website.'));
+    footerEl = el('div', 'epv-chatbot-footer', FOOTER_TEXT);
+    panel.appendChild(footerEl);
 
     root.appendChild(panel); root.appendChild(launcherBtn);
     document.body.appendChild(root);
@@ -296,6 +305,7 @@
     if (load(LIMIT_KEY) === '1') limitReached = true; // stay capped across reloads
     updateUsageUI(null);
     greetOrLimit();
+    fetchLimits();
   }
 
   function ensureGreeted() {
@@ -369,6 +379,33 @@
   /* ---------- chat plumbing (shared style with the right widget) ---------- */
   function autoGrow() { inputEl.style.height = 'auto'; inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px'; }
   function onKeyDown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
+  // Show/clear the generic "too long" notice in the footer spot (no numbers).
+  function setFooterWarning(on) {
+    if (!footerEl) return;
+    footerEl.textContent = on ? TOO_LONG_TEXT : FOOTER_TEXT;
+    footerEl.classList.toggle('epv-chatbot-footer-warning', !!on);
+  }
+  // Live cap: characters are held by the native maxlength; words are trimmed here.
+  // Warns (and blocks going further) once either ceiling is reached.
+  function enforceLimit() {
+    var words = (inputEl.value || '').split(/\s+/).filter(Boolean);
+    if (words.length > MAX_WORDS) { inputEl.value = words.slice(0, MAX_WORDS).join(' '); words = words.slice(0, MAX_WORDS); }
+    var reached = inputEl.value.trim().length >= MAX_CHARS || words.length >= MAX_WORDS;
+    setFooterWarning(reached);
+  }
+  // Pull the live limits from the backend so the widget matches the server env vars.
+  // On any failure it silently keeps the fallback defaults set above.
+  function fetchLimits() {
+    fetch(API_BASE_URL + '/api/chat/health', { method: 'GET' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.limits) return;
+        if (Number(d.limits.maxMessageChars) > 0) MAX_CHARS = Number(d.limits.maxMessageChars);
+        if (Number(d.limits.maxMessageWords) > 0) MAX_WORDS = Number(d.limits.maxMessageWords);
+        if (inputEl) inputEl.setAttribute('maxlength', String(MAX_CHARS));
+      })
+      .catch(function () {});
+  }
   function toggle() {
     isOpen = !isOpen; root.classList.toggle('epv-open', isOpen);
     launcherBtn.innerHTML = isOpen ? ICONS.close : ICONS.chat;
@@ -445,7 +482,12 @@
   function send() {
     if (busy || limitReached) return;
     var text = (inputEl.value || '').trim(); if (!text) return;
-    inputEl.value = ''; autoGrow();
+    // Never send an over-limit message (the input is already hard-capped; this is a
+    // belt-and-suspenders guard so the backend "too long" reply can't be triggered).
+    if (text.length > MAX_CHARS || text.split(/\s+/).filter(Boolean).length > MAX_WORDS) {
+      setFooterWarning(true); return;
+    }
+    inputEl.value = ''; autoGrow(); setFooterWarning(false);
 
     // Intent detection (frontend): set audience on the first clear signal; once set,
     // only flip on a strong/explicit signal for the other audience (never on weak

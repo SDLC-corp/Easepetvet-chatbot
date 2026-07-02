@@ -24,6 +24,10 @@ router.get('/health', (req, res) => {
     chat: true,
     answerMode: config.chat.answerMode,
     chain: describeChain(),
+    limits: {
+      maxMessageChars: config.chat.maxMessageChars,
+      maxMessageWords: config.chat.maxMessageWords,
+    },
   });
 });
 

@@ -130,6 +130,7 @@
 .epv-chatbot-send svg { width: 18px; height: 18px; }
 
 .epv-chatbot-footer { text-align: center; font-size: 10.5px; color: var(--epv-muted); padding: 0 0 8px; background: #fff; }
+.epv-chatbot-footer-warning { color: #a12626; font-weight: 500; }
 
 @media (max-width: 480px) {
   .epv-chatbot-root.epv-pos-bottom-right, .epv-chatbot-root.epv-pos-bottom-left { right: 12px; left: 12px; bottom: 12px; }
