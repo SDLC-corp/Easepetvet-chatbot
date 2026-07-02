@@ -211,7 +211,6 @@
     chat: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.5 3 2 6.8 2 11.5c0 2.2 1 4.2 2.7 5.7L4 21l4.2-1.6c1.2.3 2.5.5 3.8.5 5.5 0 10-3.8 10-8.5S17.5 3 12 3z"/></svg>',
     paw: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="10" r="2"/><circle cx="10" cy="6" r="2"/><circle cx="14" cy="6" r="2"/><circle cx="18" cy="10" r="2"/><path d="M12 12c-2.5 0-4.5 2-4.5 4 0 1.7 1.3 3 3 3 .7 0 1-.3 1.5-.3s.8.3 1.5.3c1.7 0 3-1.3 3-3 0-2-2-4-4.5-4z"/></svg>',
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-    clear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
     send: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 11l18-8-8 18-2-7-8-3z"/></svg>',
     ease: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><mask id="epvLeftEaseCut"><rect width="64" height="64" fill="#fff"/><circle cx="42" cy="32" r="18.5" fill="#000"/></mask></defs><circle cx="30" cy="32" r="27" fill="#1AB5AC" mask="url(#epvLeftEaseCut)"/><path d="M31 46 C24.5 40 16 35.5 16 28.3 C16 23 21.8 20.8 26 23.5 C28.2 24.9 29.9 27.4 31 29.6 C32.1 27.4 33.8 24.9 36 23.5 C40.2 20.8 46 23 46 28.3 C46 35.5 37.5 40 31 46 Z" fill="#0E8C84"/><path d="M24.5 31 L30.5 38 L49 15.5" fill="none" stroke="#0E8C84" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     easeFull: '<svg viewBox="0 0 250 72" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ease"><defs><mask id="epvLeftEaseFullCut"><rect width="72" height="72" fill="#fff"/><circle cx="46" cy="36" r="20.5" fill="#000"/></mask></defs><circle cx="33" cy="36" r="30" fill="#1AB5AC" mask="url(#epvLeftEaseFullCut)"/><path d="M34 51 C27 44.5 17.5 39.5 17.5 31.5 C17.5 25.5 24 23 28.7 26 C31.2 27.6 33 30.4 34 32.8 C35 30.4 36.8 27.6 39.3 26 C44 23 50.5 25.5 50.5 31.5 C50.5 39.5 41 44.5 34 51 Z" fill="#0E8C84"/><path d="M26.5 34.5 L33.5 42.5 L54 17" fill="none" stroke="#0E8C84" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/><text x="80" y="53" font-family="Poppins, Nunito, Quicksand, \'Segoe UI\', system-ui, Arial, sans-serif" font-size="56" font-weight="700" letter-spacing="-2" fill="#333333">ease</text></svg>',
@@ -269,11 +268,9 @@
     ht.appendChild(el('div', 'epv-chatbot-subtitle', 'Ask anything — vets, pet parents, pricing, support'));
     header.appendChild(ht);
     var actions = el('div', 'epv-chatbot-header-actions');
-    var clearBtn = el('button', 'epv-chatbot-icon-btn', ICONS.clear);
-    clearBtn.setAttribute('title', 'Delete chat history'); clearBtn.addEventListener('click', clearChat);
     var closeBtn = el('button', 'epv-chatbot-icon-btn', ICONS.close);
     closeBtn.setAttribute('title', 'Minimize chat'); closeBtn.addEventListener('click', toggle);
-    actions.appendChild(clearBtn); actions.appendChild(closeBtn);
+    actions.appendChild(closeBtn);
     header.appendChild(actions);
     panel.appendChild(header);
 
@@ -450,32 +447,6 @@
   function showTyping() { var n = el('div', 'epv-chatbot-msg epv-chatbot-msg-bot'); n.id = 'epv-left-typing'; n.appendChild(el('div', 'epv-chatbot-typing', '<span></span><span></span><span></span>')); messagesEl.appendChild(n); scrollDown(); }
   function hideTyping() { var t = document.getElementById('epv-left-typing'); if (t) t.remove(); }
   function setBusy(v) { busy = v; sendBtn.disabled = v; }
-
-  function clearChat() {
-    if (typeTimer) { clearTimeout(typeTimer); typeTimer = null; }
-    removePrompt(); messagesEl.innerHTML = '';
-    if (sessionId) {
-      try {
-        localStorage.removeItem(emailSavedKey(sessionId));
-        localStorage.removeItem(dismissedKey(sessionId));
-        localStorage.removeItem(remainingKey(sessionId));
-        localStorage.removeItem(leadStateKey(sessionId));
-      } catch (e) {}
-    }
-    sessionId = null; store(SESSION_KEY, '');
-    greeted = false; remaining = null; limitReached = false;
-    dismissedCounts = [];
-    leadOfferActive = false; lastLeadIntent = 'general';
-    // Reset conversational lead-capture state so the name prompt starts fresh.
-    leadName = null; nameCaptured = false; nameSkipped = false; awaitingName = false;
-    emailCaptured = false; awaitingContact = false; contactCaptured = false; contactSkipped = false;
-    leadDeclined = false; leadAskCount = 0;
-    leadSavePromise = null;
-    audience = 'unknown'; store(AUDIENCE_KEY, 'unknown');
-    // Preserve the browser-scoped question cap: clearing the chat must NOT reset it.
-    limitReached = (load(LIMIT_KEY) === '1');
-    updateUsageUI(null); greetOrLimit();
-  }
 
   function send() {
     if (busy || limitReached) return;
